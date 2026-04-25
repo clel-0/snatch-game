@@ -365,6 +365,16 @@
       <button class="btn btn-green" id="btn-start" style="display:none">Start Game</button>
       <p style="color:#6b7280;font-size:0.85rem" id="waiting-note">Stop scrolling reels host and start the game plz</p>
     </div>
+    <div class="card" id="host-prefix-section" style="display:none">
+      <h2>Name Restriction (host only)</h2>
+      <div class="autoflip-row">
+        <input type="checkbox" id="chk-prefix">
+        <span>Require names to start with</span>
+        <input type="text" id="inp-prefix" placeholder="e.g. Team_" maxlength="20" autocomplete="off"
+               style="margin-bottom:0;font-size:0.85rem;padding:4px 8px;flex:1">
+      </div>
+    </div>
+    <p id="waiting-prefix-note" style="display:none;text-align:center;color:#fbbf24;font-size:0.9rem;margin-top:0"></p>
   </div>
 </div>
 
@@ -489,6 +499,7 @@ let isHost      = false;
 let unsubscribe = null;   // Firebase listener teardown fn
 let latestRoom  = null;
 let syncingAutoFlipControls = false;
+let syncingPrefixControls   = false;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function genCode() {
@@ -649,6 +660,7 @@ document.getElementById("btn-create").onclick = async () => {
     turnIndex: 0,
     endProposal: null,
     autoflip: { enabled: false, intervalSec: 10 },
+    namePrefix: "",
     players: { [myId]: { name: myName, words: [], penalty: 0 } }
   });
 
@@ -666,6 +678,11 @@ document.getElementById("btn-join").onclick = async () => {
   const snap = await get(ref(db, `rooms/${code}`));
   if (!snap.exists())                { errEl.textContent = "Room not found";           return; }
   if (snap.val().status !== "lobby") { errEl.textContent = "Game already in progress"; return; }
+  const namePrefix = typeof snap.val().namePrefix === "string" ? snap.val().namePrefix : "";
+  if (namePrefix && !myName.startsWith(namePrefix)) {
+    errEl.textContent = `Your name must start with "${namePrefix}"`;
+    return;
+  }
 
   roomId = code;
   isHost = false;
@@ -693,6 +710,7 @@ function openWaiting() {
 
   if (isHost) {
     document.getElementById("btn-start").style.display = "block";
+    document.getElementById("host-prefix-section").style.display = "block";
   }
 
   if (unsubscribe) unsubscribe();
@@ -707,6 +725,22 @@ function openWaiting() {
       const li = document.createElement("li");
       li.textContent = p.name + (pid === room.host ? "  👑 host" : "");
       ul.appendChild(li);
+    }
+
+    // Name prefix notification
+    const np = typeof room.namePrefix === "string" ? room.namePrefix : "";
+    const prefixNoteEl = document.getElementById("waiting-prefix-note");
+    if (np) {
+      prefixNoteEl.textContent = `Note: everyone's name must start with "${np}".`;
+      prefixNoteEl.style.display = "block";
+    } else {
+      prefixNoteEl.style.display = "none";
+    }
+    if (isHost) {
+      syncingPrefixControls = true;
+      document.getElementById("chk-prefix").checked = !!np;
+      document.getElementById("inp-prefix").value = np;
+      syncingPrefixControls = false;
     }
 
     if (room.status === "playing") openGame();
@@ -891,6 +925,19 @@ document.getElementById("inp-autoflip-secs").onchange = async e => {
   await update(ref(db, `rooms/${roomId}`), {
     autoflip: { enabled, intervalSec }
   });
+};
+
+document.getElementById("chk-prefix").onchange = async e => {
+  if (!roomId || syncingPrefixControls) return;
+  const enabled = e.target.checked;
+  const prefix = enabled ? document.getElementById("inp-prefix").value.trim() : "";
+  await update(ref(db, `rooms/${roomId}`), { namePrefix: prefix });
+};
+
+document.getElementById("inp-prefix").onchange = async e => {
+  if (!roomId || syncingPrefixControls) return;
+  if (!document.getElementById("chk-prefix").checked) return;
+  await update(ref(db, `rooms/${roomId}`), { namePrefix: e.target.value.trim() });
 };
 
 function scheduleAutoFlip(turnId, seconds) {
