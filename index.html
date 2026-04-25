@@ -439,6 +439,44 @@ function consumeFromPoolAndBoard(room, letters) {
   return true;
 }
 
+function migratedRoomPatch(room) {
+  const patch = {};
+  const players = room.players || {};
+
+  const playerPatch = {};
+  for (const [pid, p] of Object.entries(players)) {
+    if (typeof p.penalty !== "number") {
+      playerPatch[`${pid}/penalty`] = 0;
+    }
+  }
+  if (Object.keys(playerPatch).length) patch.players = playerPatch;
+
+  const turnOrderRaw = toArr(room.turnOrder).filter(pid => players[pid]);
+  if (!turnOrderRaw.length) {
+    patch.turnOrder = Object.keys(players);
+    patch.turnIndex = 0;
+  } else {
+    if (!room.turnOrder) patch.turnOrder = turnOrderRaw;
+    if (typeof room.turnIndex !== "number") patch.turnIndex = 0;
+  }
+
+  if (!room.board || typeof room.board !== "object") {
+    const flipped = toArr(room.flipped);
+    const board = {};
+    for (let i = 0; i < flipped.length; i++) board[i] = flipped[i];
+    patch.board = board;
+  }
+
+  return patch;
+}
+
+async function maybeMigrateRoom(room) {
+  const patch = migratedRoomPatch(room);
+  const hasPatch = Object.keys(patch).length > 0;
+  if (!hasPatch) return;
+  await update(ref(db, `rooms/${roomId}`), patch);
+}
+
 async function isValidWord(word) {
   if (word.length < 4) return false;
   try {
@@ -473,7 +511,7 @@ document.getElementById("btn-create").onclick = async () => {
     board:   {},
     turnOrder: [myId],
     turnIndex: 0,
-    players: { [myId]: { name: myName, words: [] } }
+    players: { [myId]: { name: myName, words: [], penalty: 0 } }
   });
 
   openWaiting();
@@ -550,6 +588,7 @@ function openGame() {
   unsubscribe = onValue(ref(db, `rooms/${roomId}`), snap => {
     if (!snap.exists()) return;
     latestRoom = snap.val();
+    maybeMigrateRoom(latestRoom).catch(() => {});
     renderGame(latestRoom);
   });
 }
