@@ -345,6 +345,11 @@
       <button class="btn btn-blue" id="btn-join">Join Room</button>
       <p class="error" id="join-error"></p>
     </div>
+    <p style="text-align:center;font-size:0.78rem;color:#6b7280;margin-top:4px">
+      Allowed words:
+      <a href="https://github.com/dwyl/english-words/blob/master/words_alpha.txt"
+         target="_blank" rel="noopener noreferrer" style="color:#fbbf24">words_alpha.txt</a>
+    </p>
   </div>
 </div>
 
@@ -451,7 +456,7 @@ const db  = getDatabase(app);
 // ─── Letter bag ───────────────────────────────────────────────────────────────
 const DIST = {
   A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,
-  L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1
+  L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:5,T:7,U:4,V:2,W:2,X:1,Y:2,Z:1
 };
 const TOTAL_TILES = Object.values(DIST).reduce((s, n) => s + n, 0);
 const GRID_COLUMNS = 20;
@@ -605,16 +610,19 @@ async function maybeMigrateRoom(room) {
   await update(ref(db, `rooms/${roomId}`), patch);
 }
 
+// ─── Word list (loaded once at startup) ──────────────────────────────────────
+let wordSet = null;
+const wordListReady = fetch(
+  "https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt"
+).then(r => r.text()).then(text => {
+  wordSet = new Set(text.split(/\r?\n/).map(w => w.trim().toLowerCase()).filter(Boolean));
+}).catch(() => { /* fail open — wordSet stays null */ });
+
 async function isValidWord(word) {
   if (word.length < 5) return false;
-  try {
-    const res = await fetch(
-      `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`
-    );
-    return res.ok;
-  } catch {
-    return true; // fail open — don't block play on network error
-  }
+  await wordListReady; // no-op after first load; ~1s on very first visit
+  if (wordSet === null) return true; // list failed to load — fail open
+  return wordSet.has(word.toLowerCase());
 }
 
 // ─── Screen helper ────────────────────────────────────────────────────────────
