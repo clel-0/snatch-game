@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snatch</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #111827;
+      color: #f3f4f6;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 2.5rem;
+      color: #fbbf24;
+      letter-spacing: 6px;
+      margin-bottom: 4px;
+    }
+    .tagline { text-align: center; color: #6b7280; margin-bottom: 24px; }
+
+    /* Screens */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: #1f2937;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card h2 {
+      font-size: 0.8rem;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    /* Inputs */
+    input[type="text"] {
+      width: 100%;
+      background: #374151;
+      border: 1px solid #4b5563;
+      border-radius: 8px;
+      color: #f3f4f6;
+      font-size: 1rem;
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: #fbbf24; }
+
+    /* Buttons */
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 11px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; cursor: default; transform: none; }
+    .btn-yellow { background: #fbbf24; color: #111827; }
+    .btn-blue   { background: #3b82f6; color: #fff; }
+    .btn-green  { background: #10b981; color: #fff; }
+    .btn-ghost  { background: #374151; color: #f3f4f6; }
+    .btn + .btn { margin-top: 8px; }
+
+    .error { color: #f87171; font-size: 0.85rem; margin-top: 6px; min-height: 18px; }
+
+    /* Lobby */
+    #lobby-screen .wrap { max-width: 420px; margin: 0 auto; }
+
+    /* Waiting */
+    #waiting-screen .wrap { max-width: 420px; margin: 0 auto; text-align: center; }
+    .big-code {
+      font-size: 3rem;
+      font-weight: bold;
+      letter-spacing: 10px;
+      color: #fbbf24;
+      margin: 10px 0 18px;
+    }
+    .player-list { list-style: none; text-align: left; }
+    .player-list li {
+      background: #374151;
+      padding: 8px 14px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+
+    /* Game */
+    #game-screen .wrap { max-width: 960px; margin: 0 auto; }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .room-badge {
+      background: #374151;
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.9rem;
+    }
+    .room-badge strong { color: #fbbf24; }
+
+    /* Pool */
+    .pool-card {
+      background: #1f2937;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .pool-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .pool-header span { color: #9ca3af; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
+    .tiles {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 64px;
+      align-content: flex-start;
+    }
+    .tile {
+      width: 52px;
+      height: 62px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: bold;
+      transition: transform 0.15s;
+    }
+    .tile-up   { background: #fbbf24; color: #111827; box-shadow: 0 4px 0 #92400e; }
+    .tile-up:hover { transform: translateY(-3px); }
+    .tile-down { background: #374151; border: 2px dashed #4b5563; }
+
+    /* Action area */
+    .action-row { display: flex; gap: 10px; }
+    .action-row input { margin-bottom: 0; flex: 1; }
+    .action-row .btn  { width: auto; padding: 10px 22px; }
+
+    .flip-row { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .flip-row .btn  { width: auto; padding: 10px 28px; }
+    .flip-row .hint { color: #6b7280; font-size: 0.85rem; }
+
+    /* Players */
+    .players-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .player-card {
+      background: #1f2937;
+      border-radius: 12px;
+      padding: 16px;
+      border: 2px solid transparent;
+    }
+    .player-card.is-me { border-color: #fbbf24; }
+    .player-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 10px;
+    }
+    .player-header strong { font-size: 1rem; }
+    .player-header .pts   { color: #9ca3af; font-size: 0.85rem; }
+    .word-chips { display: flex; flex-direction: column; gap: 5px; }
+    .word-chip {
+      background: #374151;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-family: monospace;
+      font-size: 0.95rem;
+      letter-spacing: 2px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .word-chip .len { color: #9ca3af; font-size: 0.8rem; }
+
+    /* Log */
+    .log-box {
+      background: #1f2937;
+      border-radius: 12px;
+      padding: 14px 16px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .log-entry { font-size: 0.85rem; color: #9ca3af; padding: 2px 0; }
+    .log-entry .hi { color: #fbbf24; }
+
+    .section-label {
+      font-size: 0.78rem;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>SNATCH</h1>
+<p class="tagline">Steal letters. Build words. Take everything.</p>
+
+<!-- ── LOBBY ──────────────────────────────────────────────── -->
+<div id="lobby-screen" class="screen active">
+  <div class="wrap">
+    <div class="card">
+      <h2>Your Name</h2>
+      <input type="text" id="inp-name" placeholder="Enter your name" maxlength="16" autocomplete="off">
+    </div>
+    <div class="card">
+      <h2>Create Game</h2>
+      <button class="btn btn-yellow" id="btn-create">Create New Room</button>
+    </div>
+    <div class="card">
+      <h2>Join Game</h2>
+      <input type="text" id="inp-code" placeholder="Room code  (e.g. AB3K)" maxlength="6"
+             autocomplete="off" style="text-transform:uppercase;letter-spacing:4px">
+      <button class="btn btn-blue" id="btn-join">Join Room</button>
+      <p class="error" id="join-error"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ── WAITING ─────────────────────────────────────────────── -->
+<div id="waiting-screen" class="screen">
+  <div class="wrap">
+    <div class="card">
+      <h2>Room Code — share with friends</h2>
+      <div class="big-code" id="waiting-code"></div>
+      <h2>Players in room</h2>
+      <ul class="player-list" id="waiting-players"></ul>
+      <br>
+      <button class="btn btn-green" id="btn-start" style="display:none">Start Game</button>
+      <p style="color:#6b7280;font-size:0.85rem" id="waiting-note">Waiting for host to start…</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── GAME ────────────────────────────────────────────────── -->
+<div id="game-screen" class="screen">
+  <div class="wrap">
+
+    <div class="topbar">
+      <div class="room-badge">Room: <strong id="game-code"></strong></div>
+      <div style="color:#6b7280;font-size:0.85rem"><span id="bag-count">0</span> letters left in bag</div>
+    </div>
+
+    <!-- Pool -->
+    <div class="pool-card">
+      <div class="pool-header">
+        <span>Letter Pool</span>
+      </div>
+      <div class="tiles" id="pool-tiles"></div>
+    </div>
+
+    <!-- Actions -->
+    <div class="card" style="margin-bottom:16px">
+      <h2>Flip &amp; Claim</h2>
+      <div class="flip-row">
+        <button class="btn btn-yellow" id="btn-flip">Flip Letter</button>
+        <span class="hint">Anyone can flip at any time</span>
+      </div>
+      <div class="section-label">
+        Type a word to claim it from the pool — or steal a player's word by using all their letters plus at least one from the pool
+      </div>
+      <div class="action-row">
+        <input type="text" id="inp-word" placeholder="Type a word…" autocomplete="off"
+               style="text-transform:uppercase;letter-spacing:3px">
+        <button class="btn btn-green" id="btn-claim">Claim</button>
+      </div>
+      <p class="error" id="claim-error"></p>
+    </div>
+
+    <!-- Players -->
+    <div class="section-label">Players</div>
+    <div class="players-grid" id="players-grid"></div>
+
+    <!-- Log -->
+    <div class="section-label">Game Log</div>
+    <div class="log-box" id="log-box"></div>
+
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getDatabase, ref, set, get, onValue, update, push, runTransaction
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+// ─── Firebase config ─────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey:            "AIzaSyBdir1LLbWQj8FGlIaRQ-NuyZRH42GDG34",
+  authDomain:        "snatch-game-cdb61.firebaseapp.com",
+  databaseURL:       "https://snatch-game-cdb61-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "snatch-game-cdb61",
+  storageBucket:     "snatch-game-cdb61.firebasestorage.app",
+  messagingSenderId: "57319498000",
+  appId:             "1:57319498000:web:4bd62457050252b22e4595"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+// ─── Letter bag ───────────────────────────────────────────────────────────────
+const DIST = {
+  A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,
+  L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1
+};
+
+function makeBag() {
+  const bag = [];
+  for (const [l, n] of Object.entries(DIST))
+    for (let i = 0; i < n; i++) bag.push(l);
+  // Fisher-Yates shuffle
+  for (let i = bag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [bag[i], bag[j]] = [bag[j], bag[i]];
+  }
+  return bag;
+}
+
+// ─── Persistent player ID ─────────────────────────────────────────────────────
+let myId = sessionStorage.getItem("snatch_id");
+if (!myId) {
+  myId = Math.random().toString(36).slice(2, 12);
+  sessionStorage.setItem("snatch_id", myId);
+}
+
+// ─── App state ────────────────────────────────────────────────────────────────
+let myName      = "";
+let roomId      = "";
+let isHost      = false;
+let unsubscribe = null;   // Firebase listener teardown fn
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function genCode() {
+  const c = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 4 }, () => c[Math.floor(Math.random() * c.length)]).join("");
+}
+
+// Letter frequency map
+function freq(str) {
+  const m = {};
+  for (const c of str) m[c] = (m[c] || 0) + 1;
+  return m;
+}
+
+// Subtract multiset b from a. Returns remainder object, or null if b ⊄ a.
+function freqSub(a, b) {
+  const r = { ...a };
+  for (const [c, n] of Object.entries(b)) {
+    if ((r[c] || 0) < n) return null;
+    r[c] -= n;
+    if (r[c] === 0) delete r[c];
+  }
+  return r;
+}
+
+const isEmpty = obj => Object.keys(obj).length === 0;
+
+async function isValidWord(word) {
+  if (word.length < 4) return false;
+  try {
+    const res = await fetch(
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`
+    );
+    return res.ok;
+  } catch {
+    return true; // fail open — don't block play on network error
+  }
+}
+
+// ─── Screen helper ────────────────────────────────────────────────────────────
+function show(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+// ─── Lobby ────────────────────────────────────────────────────────────────────
+document.getElementById("btn-create").onclick = async () => {
+  myName = document.getElementById("inp-name").value.trim();
+  if (!myName) { alert("Enter your name first"); return; }
+
+  roomId = genCode();
+  isHost = true;
+
+  await set(ref(db, `rooms/${roomId}`), {
+    host:    myId,
+    status:  "lobby",
+    bag:     makeBag(),
+    flipped: [],
+    players: { [myId]: { name: myName, words: [] } }
+  });
+
+  openWaiting();
+};
+
+document.getElementById("btn-join").onclick = async () => {
+  myName        = document.getElementById("inp-name").value.trim();
+  const code    = document.getElementById("inp-code").value.trim().toUpperCase();
+  const errEl   = document.getElementById("join-error");
+
+  if (!myName) { errEl.textContent = "Enter your name first"; return; }
+  if (!code)   { errEl.textContent = "Enter a room code";     return; }
+
+  const snap = await get(ref(db, `rooms/${code}`));
+  if (!snap.exists())                { errEl.textContent = "Room not found";           return; }
+  if (snap.val().status !== "lobby") { errEl.textContent = "Game already in progress"; return; }
+
+  roomId = code;
+  isHost = false;
+  await update(ref(db, `rooms/${roomId}/players/${myId}`), { name: myName, words: [] });
+  openWaiting();
+};
+
+// ─── Waiting room ─────────────────────────────────────────────────────────────
+function openWaiting() {
+  show("waiting-screen");
+  document.getElementById("waiting-code").textContent = roomId;
+
+  if (isHost) {
+    document.getElementById("btn-start").style.display = "block";
+    document.getElementById("waiting-note").style.display = "none";
+  }
+
+  if (unsubscribe) unsubscribe();
+  unsubscribe = onValue(ref(db, `rooms/${roomId}`), snap => {
+    if (!snap.exists()) return;
+    const room = snap.val();
+
+    // Render player list
+    const ul = document.getElementById("waiting-players");
+    ul.innerHTML = "";
+    for (const [pid, p] of Object.entries(room.players || {})) {
+      const li = document.createElement("li");
+      li.textContent = p.name + (pid === room.host ? "  👑 host" : "");
+      ul.appendChild(li);
+    }
+
+    if (room.status === "playing") openGame();
+  });
+}
+
+document.getElementById("btn-start").onclick = () =>
+  update(ref(db, `rooms/${roomId}`), { status: "playing" });
+
+// ─── Game screen ──────────────────────────────────────────────────────────────
+function openGame() {
+  show("game-screen");
+  document.getElementById("game-code").textContent = roomId;
+
+  if (unsubscribe) unsubscribe();
+  unsubscribe = onValue(ref(db, `rooms/${roomId}`), snap => {
+    if (!snap.exists()) return;
+    renderGame(snap.val());
+  });
+}
+
+const PLAYER_COLOURS = ["#fbbf24","#34d399","#60a5fa","#f472b6","#a78bfa","#fb923c"];
+
+function renderGame(room) {
+  const flipped = room.flipped || [];
+  const bag     = room.bag     || [];
+
+  // Pool tiles
+  const poolEl = document.getElementById("pool-tiles");
+  poolEl.innerHTML = "";
+  flipped.forEach(l => {
+    const d = document.createElement("div");
+    d.className = "tile tile-up";
+    d.textContent = l;
+    poolEl.appendChild(d);
+  });
+
+  document.getElementById("bag-count").textContent = bag.length;
+  document.getElementById("btn-flip").disabled = bag.length === 0;
+
+  // Players
+  const grid = document.getElementById("players-grid");
+  grid.innerHTML = "";
+  let ci = 0;
+  for (const [pid, p] of Object.entries(room.players || {})) {
+    const words    = Array.isArray(p.words) ? p.words : [];
+    const total    = words.reduce((s, w) => s + w.length, 0);
+    const colour   = PLAYER_COLOURS[ci++ % PLAYER_COLOURS.length];
+    const card     = document.createElement("div");
+    card.className = "player-card" + (pid === myId ? " is-me" : "");
+    if (pid === myId) card.style.borderColor = colour;
+
+    card.innerHTML = `
+      <div class="player-header">
+        <strong style="color:${colour}">${p.name}${pid === myId ? " (you)" : ""}</strong>
+        <span class="pts">${total} pts</span>
+      </div>
+      <div class="word-chips">
+        ${words.map(w => `
+          <div class="word-chip">
+            ${w}
+            <span class="len">${w.length}</span>
+          </div>`).join("")}
+      </div>`;
+    grid.appendChild(card);
+  }
+
+  // Log
+  const logEl  = document.getElementById("log-box");
+  const logRaw = room.log || {};
+  const entries = Array.isArray(logRaw) ? logRaw : Object.values(logRaw);
+  logEl.innerHTML = [...entries].slice(-30).reverse()
+    .map(e => `<div class="log-entry">${e.msg}</div>`).join("");
+}
+
+// ─── Flip letter ──────────────────────────────────────────────────────────────
+document.getElementById("btn-flip").onclick = async () => {
+  document.getElementById("btn-flip").disabled = true;
+  let letter = null;
+
+  await runTransaction(ref(db, `rooms/${roomId}`), room => {
+    if (!room?.bag?.length) return room;
+    letter = room.bag.shift();
+    if (!room.flipped) room.flipped = [];
+    room.flipped.push(letter);
+    return room;
+  });
+
+  if (letter) {
+    await push(ref(db, `rooms/${roomId}/log`), {
+      msg: `<span class="hi">${myName}</span> flipped a <strong>${letter}</strong>`
+    });
+  }
+};
+
+// ─── Claim / Steal ────────────────────────────────────────────────────────────
+document.getElementById("btn-claim").onclick   = handleClaim;
+document.getElementById("inp-word").onkeydown  = e => { if (e.key === "Enter") handleClaim(); };
+
+async function handleClaim() {
+  const word  = document.getElementById("inp-word").value.trim().toUpperCase();
+  const errEl = document.getElementById("claim-error");
+  errEl.textContent = "";
+
+  if (word.length < 4) {
+    errEl.textContent = "Words must be at least 4 letters";
+    return;
+  }
+
+  errEl.textContent = "Checking word…";
+  if (!await isValidWord(word)) {
+    errEl.textContent = `"${word}" is not a recognised word`;
+    return;
+  }
+  errEl.textContent = "";
+
+  const snap = await get(ref(db, `rooms/${roomId}`));
+  if (!snap.exists()) return;
+  const room     = snap.val();
+  const flipped  = room.flipped || [];
+  const wordFreq = freq(word);
+  const poolFreq = freq(flipped);
+
+  // ── Option 1: claim entirely from pool ──────────────────────────────────────
+  const poolRem = freqSub(wordFreq, poolFreq);
+  if (poolRem !== null && isEmpty(poolRem)) {
+    const ok = await atomicClaim(word);
+    if (ok) {
+      document.getElementById("inp-word").value = "";
+      await push(ref(db, `rooms/${roomId}/log`), {
+        msg: `<span class="hi">${myName}</span> claimed <strong>${word}</strong>`
+      });
+    } else {
+      errEl.textContent = "Letters were just taken by someone else — try again";
+    }
+    return;
+  }
+
+  // ── Option 2: steal from a player ───────────────────────────────────────────
+  for (const [pid, p] of Object.entries(room.players || {})) {
+    const words = Array.isArray(p.words) ? p.words : [];
+    for (let wi = 0; wi < words.length; wi++) {
+      const existing  = words[wi];
+      const extraFreq = freqSub(wordFreq, freq(existing));
+      if (!extraFreq)           continue; // new word is missing some existing letters
+      if (isEmpty(extraFreq))   continue; // no new letters added — not a valid steal
+      if (!freqSub(poolFreq, extraFreq)) continue; // extra letters not all in pool
+
+      const ok = await atomicSteal(word, pid, wi, existing, extraFreq);
+      if (ok) {
+        document.getElementById("inp-word").value = "";
+        const targetName = room.players[pid].name;
+        await push(ref(db, `rooms/${roomId}/log`), {
+          msg: `<span class="hi">${myName}</span> stole <strong>${existing}</strong> from ${targetName} → <strong>${word}</strong>`
+        });
+        return;
+      }
+    }
+  }
+
+  errEl.textContent = "Can't form that word from the pool or by stealing";
+}
+
+// Atomically claim a word from the pool
+async function atomicClaim(word) {
+  let committed = false;
+  await runTransaction(ref(db, `rooms/${roomId}`), room => {
+    if (!room) return room;
+    const pool = [...(room.flipped || [])];
+    const wf   = freq(word);
+    const pf   = freq(pool);
+    const rem  = freqSub(wf, pf);
+    if (!rem || !isEmpty(rem)) return; // abort — letters no longer available
+
+    for (const c of word) {
+      const i = pool.indexOf(c);
+      if (i === -1) return;
+      pool.splice(i, 1);
+    }
+    room.flipped = pool;
+    if (!room.players[myId].words) room.players[myId].words = [];
+    room.players[myId].words.push(word);
+    committed = true;
+    return room;
+  });
+  return committed;
+}
+
+// Atomically steal an existing word and consume extra pool letters
+async function atomicSteal(newWord, targetPid, wordIdx, oldWord, extraFreq) {
+  let committed = false;
+  await runTransaction(ref(db, `rooms/${roomId}`), room => {
+    if (!room) return room;
+
+    // Verify the target word still exists unchanged
+    const targetWords = Array.isArray(room.players[targetPid]?.words)
+      ? room.players[targetPid].words : [];
+    if (targetWords[wordIdx] !== oldWord) return; // already stolen
+
+    // Verify extra pool letters are still available
+    const pool     = [...(room.flipped || [])];
+    const extraArr = Object.entries(extraFreq).flatMap(([c, n]) => Array(n).fill(c));
+    for (const c of extraArr) {
+      const i = pool.indexOf(c);
+      if (i === -1) return; // letter no longer in pool
+      pool.splice(i, 1);
+    }
+
+    room.flipped = pool;
+    room.players[targetPid].words.splice(wordIdx, 1);
+    if (!room.players[myId].words) room.players[myId].words = [];
+    room.players[myId].words.push(newWord);
+    committed = true;
+    return room;
+  });
+  return committed;
+}
+</script>
+</body>
+</html>
