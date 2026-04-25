@@ -290,6 +290,28 @@
       padding-right: 12px;
     }
 
+    .autoflip-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 0.85rem;
+      color: #9ca3af;
+    }
+    .autoflip-row input[type="number"] {
+      width: 56px;
+      padding: 4px 8px;
+      margin-bottom: 0;
+      font-size: 0.85rem;
+    }
+    .autoflip-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #fbbf24;
+      flex-shrink: 0;
+    }
+
     @media (max-width: 800px) {
       .tiles {
         grid-template-columns: repeat(10, minmax(0, 1fr));
@@ -363,6 +385,12 @@
     <div class="card" style="margin-bottom:16px">
       <h2>Flip &amp; Claim</h2>
       <div class="flip-row"><span class="hint">Click a hidden tile in the grid to flip a letter on your turn</span></div>
+      <div class="autoflip-row">
+        <input type="checkbox" id="chk-autoflip">
+        <span>Auto-flip every</span>
+        <input type="number" id="inp-autoflip-secs" value="10" min="1" max="300">
+        <span>seconds</span>
+      </div>
       <div class="section-label">
         Type a word to claim it from the pool, or steal a player's word by using all their letters plus at least one from the pool. 
         Words must be at least 5 letters.
@@ -375,8 +403,7 @@
       <p class="error" id="flip-error"></p>
       <p class="error" id="claim-error"></p>
       <div class="vote-row">
-        <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">[END GAME BUTTON]
-            (Just end the game vro, there's prob no more words left)</button>
+        <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">Just end the game vro, there's prob no more words left</button>
         <span class="vote-note" id="vote-note"></span>
       </div>
     </div>
@@ -456,6 +483,7 @@ let roomId      = "";
 let isHost      = false;
 let unsubscribe = null;   // Firebase listener teardown fn
 let latestRoom  = null;
+let syncingAutoFlipControls = false;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function genCode() {
@@ -557,6 +585,16 @@ function migratedRoomPatch(room) {
     patch.board = board;
   }
 
+  const af = room.autoflip;
+  if (!af || typeof af !== "object") {
+    patch.autoflip = { enabled: false, intervalSec: 10 };
+  } else {
+    const afPatch = {};
+    if (typeof af.enabled !== "boolean") afPatch.enabled = false;
+    if (typeof af.intervalSec !== "number" || af.intervalSec < 1) afPatch.intervalSec = 10;
+    if (Object.keys(afPatch).length) patch.autoflip = { ...af, ...afPatch };
+  }
+
   return patch;
 }
 
@@ -602,6 +640,7 @@ document.getElementById("btn-create").onclick = async () => {
     turnOrder: [myId],
     turnIndex: 0,
     endProposal: null,
+    autoflip: { enabled: false, intervalSec: 10 },
     players: { [myId]: { name: myName, words: [], penalty: 0 } }
   });
 
@@ -698,8 +737,18 @@ function renderGame(room) {
   const proposal = room.endProposal && typeof room.endProposal === "object" ? room.endProposal : null;
   const approvals = proposal?.approvals && typeof proposal.approvals === "object" ? proposal.approvals : {};
   const approvalCount = turnOrder.filter(pid => approvals[pid]).length;
+  const roomAutoFlip = room.autoflip && typeof room.autoflip === "object" ? room.autoflip : {};
+  const autoFlipEnabled = !!roomAutoFlip.enabled;
+  const autoFlipSecs = Math.max(1, Number(roomAutoFlip.intervalSec) || 10);
   const voteNoteEl = document.getElementById("vote-note");
   const voteBtn = document.getElementById("btn-end-vote");
+  const chkAutoFlip = document.getElementById("chk-autoflip");
+  const inpAutoFlipSecs = document.getElementById("inp-autoflip-secs");
+
+  syncingAutoFlipControls = true;
+  chkAutoFlip.checked = autoFlipEnabled;
+  inpAutoFlipSecs.value = String(autoFlipSecs);
+  syncingAutoFlipControls = false;
 
   document.getElementById("turn-indicator").textContent = ended ? "Game ended" : `Turn: ${currentTurnName}`;
   document.getElementById("flip-error").textContent = "";
@@ -720,6 +769,13 @@ function renderGame(room) {
     voteBtn.disabled = false;
     voteBtn.textContent = "Just end the game vro, there's prob no more words left";
     voteNoteEl.textContent = "";
+  }
+
+  // Auto-flip timer management
+  if (!ended && currentTurnId === myId && autoFlipEnabled && autoFlipForTurn !== myId) {
+    scheduleAutoFlip(myId, autoFlipSecs);
+  } else if (ended || currentTurnId !== myId || !autoFlipEnabled) {
+    clearAutoFlip();
   }
 
   // Pool tiles
@@ -804,44 +860,66 @@ function renderGame(room) {
     .map(e => `<div class="log-entry">${e.msg}</div>`).join("");
 }
 
-document.getElementById("pool-tiles").onclick = async e => {
-  const tile = e.target.closest(".tile-down");
-  if (!tile) return;
-  const idx = Number(tile.dataset.idx);
-  if (!Number.isInteger(idx)) return;
+// ─── Auto-flip ────────────────────────────────────────────────────────────────
+let autoFlipTimer   = null;
+let autoFlipForTurn = null;
 
-  const flipErr = document.getElementById("flip-error");
+document.getElementById("chk-autoflip").onchange = async e => {
+  if (!roomId || syncingAutoFlipControls) return;
+  const enabled = !!e.target.checked;
+  const current = latestRoom?.autoflip && typeof latestRoom.autoflip === "object" ? latestRoom.autoflip : {};
+  const intervalSec = Math.max(1, Number(current.intervalSec) || 10);
+  await update(ref(db, `rooms/${roomId}`), {
+    autoflip: { enabled, intervalSec }
+  });
+};
+
+document.getElementById("inp-autoflip-secs").onchange = async e => {
+  if (!roomId || syncingAutoFlipControls) return;
+  const intervalSec = Math.max(1, parseInt(e.target.value, 10) || 10);
+  e.target.value = String(intervalSec);
+  const current = latestRoom?.autoflip && typeof latestRoom.autoflip === "object" ? latestRoom.autoflip : {};
+  const enabled = !!current.enabled;
+  await update(ref(db, `rooms/${roomId}`), {
+    autoflip: { enabled, intervalSec }
+  });
+};
+
+function scheduleAutoFlip(turnId, seconds) {
+  clearAutoFlip();
+  autoFlipForTurn = turnId;
+  autoFlipTimer = setTimeout(doAutoFlip, seconds * 1000);
+}
+
+function clearAutoFlip() {
+  if (autoFlipTimer !== null) { clearTimeout(autoFlipTimer); autoFlipTimer = null; }
+  autoFlipForTurn = null;
+}
+
+async function doAutoFlip() {
+  autoFlipTimer = null;
+  autoFlipForTurn = null;
   const room = latestRoom;
-  if (!room) return;
+  const roomAutoFlip = room?.autoflip && typeof room.autoflip === "object" ? room.autoflip : {};
+  if (!room || room.status === "ended" || !roomAutoFlip.enabled) return;
 
   const turnOrder = toArr(room.turnOrder).filter(pid => room.players?.[pid]);
   const turnIndex = typeof room.turnIndex === "number" ? room.turnIndex : 0;
   const currentTurnId = turnOrder.length ? turnOrder[turnIndex % turnOrder.length] : null;
-  if (room.status === "ended") {
-    flipErr.textContent = "The game has ended.";
-    return;
-  }
-  if (currentTurnId !== myId) {
-    flipErr.textContent = "Not your turn to flip.";
-    return;
-  }
+  if (currentTurnId !== myId) return;
 
   const board = toBoardMap(room.board);
-  if (idx >= TOTAL_TILES) {
-    return;
+  const flippable = [];
+  for (let i = 0; i < TOTAL_TILES; i++) {
+    if (!hasOwn(board, i)) flippable.push(i);
   }
-  if (hasOwn(board, idx)) {
-    flipErr.textContent = "That tile is already revealed.";
-    return;
-  }
+  if (!flippable.length || !toArr(room.bag).length) return;
 
-  if (!toArr(room.bag).length) {
-    flipErr.textContent = "No letters left to flip.";
-    return;
-  }
+  const idx = flippable[Math.floor(Math.random() * flippable.length)];
+  await doFlip(idx);
+}
 
-  flipErr.textContent = "";
-
+async function doFlip(idx) {
   let letter = null;
   let committed = false;
 
@@ -878,9 +956,47 @@ document.getElementById("pool-tiles").onclick = async e => {
     await push(ref(db, `rooms/${roomId}/log`), {
       msg: `<span class="hi">${myName}</span> flipped a <strong>${letter}</strong>`
     });
-  } else {
-    flipErr.textContent = "Flip failed due to a game update. Try again.";
+  } else if (!committed) {
+    document.getElementById("flip-error").textContent = "Flip failed due to a game update. Try again.";
   }
+}
+
+document.getElementById("pool-tiles").onclick = async e => {
+  const tile = e.target.closest(".tile-down");
+  if (!tile) return;
+  const idx = Number(tile.dataset.idx);
+  if (!Number.isInteger(idx)) return;
+
+  const flipErr = document.getElementById("flip-error");
+  const room = latestRoom;
+  if (!room) return;
+
+  const turnOrder = toArr(room.turnOrder).filter(pid => room.players?.[pid]);
+  const turnIndex = typeof room.turnIndex === "number" ? room.turnIndex : 0;
+  const currentTurnId = turnOrder.length ? turnOrder[turnIndex % turnOrder.length] : null;
+  if (room.status === "ended") {
+    flipErr.textContent = "The game has ended.";
+    return;
+  }
+  if (currentTurnId !== myId) {
+    flipErr.textContent = "Not your turn to flip.";
+    return;
+  }
+
+  const board = toBoardMap(room.board);
+  if (idx >= TOTAL_TILES) return;
+  if (hasOwn(board, idx)) {
+    flipErr.textContent = "That tile is already revealed.";
+    return;
+  }
+  if (!toArr(room.bag).length) {
+    flipErr.textContent = "No letters left to flip.";
+    return;
+  }
+
+  flipErr.textContent = "";
+  clearAutoFlip();
+  await doFlip(idx);
 };
 
 // ─── Claim / Steal ────────────────────────────────────────────────────────────
