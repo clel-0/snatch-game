@@ -131,16 +131,16 @@
       margin-bottom: 12px;
     }
     .pool-header span { color: #9ca3af; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
+    #turn-indicator { color: #fbbf24; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
     .tiles {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(14, minmax(0, 1fr));
       gap: 8px;
-      min-height: 64px;
-      align-content: flex-start;
+      min-height: 360px;
     }
     .tile {
-      width: 52px;
-      height: 62px;
+      width: 100%;
+      aspect-ratio: 5 / 6;
       border-radius: 8px;
       display: flex;
       align-items: center;
@@ -151,7 +151,14 @@
     }
     .tile-up   { background: #fbbf24; color: #111827; box-shadow: 0 4px 0 #92400e; }
     .tile-up:hover { transform: translateY(-3px); }
-    .tile-down { background: #374151; border: 2px dashed #4b5563; }
+    .tile-down {
+      background: #374151;
+      border: 2px dashed #4b5563;
+      color: #6b7280;
+      cursor: pointer;
+      user-select: none;
+    }
+    .tile-down.not-turn { cursor: not-allowed; opacity: 0.65; }
 
     /* Action area */
     .action-row { display: flex; gap: 10px; }
@@ -215,6 +222,15 @@
       letter-spacing: 1px;
       margin-bottom: 8px;
     }
+
+    @media (max-width: 800px) {
+      .tiles {
+        grid-template-columns: repeat(10, minmax(0, 1fr));
+      }
+      .tile {
+        font-size: 1.1rem;
+      }
+    }
   </style>
 </head>
 <body>
@@ -271,6 +287,7 @@
     <div class="pool-card">
       <div class="pool-header">
         <span>Letter Pool</span>
+        <span id="turn-indicator">Turn: -</span>
       </div>
       <div class="tiles" id="pool-tiles"></div>
     </div>
@@ -278,10 +295,7 @@
     <!-- Actions -->
     <div class="card" style="margin-bottom:16px">
       <h2>Flip &amp; Claim</h2>
-      <div class="flip-row">
-        <button class="btn btn-yellow" id="btn-flip">Flip Letter</button>
-        <span class="hint">Anyone can flip at any time</span>
-      </div>
+      <div class="flip-row"><span class="hint">Click a hidden tile in the grid to flip a letter on your turn</span></div>
       <div class="section-label">
         Type a word to claim it from the pool — or steal a player's word by using all their letters plus at least one from the pool
       </div>
@@ -290,6 +304,7 @@
                style="text-transform:uppercase;letter-spacing:3px">
         <button class="btn btn-green" id="btn-claim">Claim</button>
       </div>
+      <p class="error" id="flip-error"></p>
       <p class="error" id="claim-error"></p>
     </div>
 
@@ -328,6 +343,7 @@ const DIST = {
   A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,
   L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1
 };
+const TOTAL_TILES = Object.values(DIST).reduce((s, n) => s + n, 0);
 
 function makeBag() {
   const bag = [];
@@ -353,6 +369,7 @@ let myName      = "";
 let roomId      = "";
 let isHost      = false;
 let unsubscribe = null;   // Firebase listener teardown fn
+let latestRoom  = null;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function genCode() {
@@ -387,6 +404,41 @@ function toArr(val) {
   return Object.values(val);
 }
 
+function toBoardMap(val) {
+  if (!val || typeof val !== "object") return {};
+  return { ...val };
+}
+
+function scoreOfPlayer(p) {
+  const words = toArr(p.words);
+  const base = words.reduce((s, w) => s + w.length, 0);
+  const penalty = typeof p.penalty === "number" ? p.penalty : 0;
+  return base + penalty;
+}
+
+function formatScore(n) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function consumeFromPoolAndBoard(room, letters) {
+  const pool = toArr(room.flipped);
+  const board = toBoardMap(room.board);
+
+  for (const c of letters) {
+    const poolIndex = pool.indexOf(c);
+    if (poolIndex === -1) return false;
+    pool.splice(poolIndex, 1);
+
+    const key = Object.keys(board).find(k => board[k] === c);
+    if (key === undefined) return false;
+    delete board[key];
+  }
+
+  room.flipped = pool;
+  room.board = board;
+  return true;
+}
+
 async function isValidWord(word) {
   if (word.length < 4) return false;
   try {
@@ -418,6 +470,9 @@ document.getElementById("btn-create").onclick = async () => {
     status:  "lobby",
     bag:     makeBag(),
     flipped: [],
+    board:   {},
+    turnOrder: [myId],
+    turnIndex: 0,
     players: { [myId]: { name: myName, words: [] } }
   });
 
@@ -438,7 +493,20 @@ document.getElementById("btn-join").onclick = async () => {
 
   roomId = code;
   isHost = false;
-  await update(ref(db, `rooms/${roomId}/players/${myId}`), { name: myName, words: [] });
+
+  await runTransaction(ref(db, `rooms/${roomId}`), room => {
+    if (!room || room.status !== "lobby") return room;
+    if (!room.players) room.players = {};
+    room.players[myId] = { name: myName, words: [], penalty: 0 };
+
+    if (!room.turnOrder) room.turnOrder = [];
+    const turnOrder = toArr(room.turnOrder);
+    if (!turnOrder.includes(myId)) turnOrder.push(myId);
+    room.turnOrder = turnOrder;
+
+    if (typeof room.turnIndex !== "number") room.turnIndex = 0;
+    return room;
+  });
   openWaiting();
 };
 
@@ -481,7 +549,8 @@ function openGame() {
   if (unsubscribe) unsubscribe();
   unsubscribe = onValue(ref(db, `rooms/${roomId}`), snap => {
     if (!snap.exists()) return;
-    renderGame(snap.val());
+    latestRoom = snap.val();
+    renderGame(latestRoom);
   });
 }
 
@@ -490,19 +559,35 @@ const PLAYER_COLOURS = ["#fbbf24","#34d399","#60a5fa","#f472b6","#a78bfa","#fb92
 function renderGame(room) {
   const flipped = toArr(room.flipped);
   const bag     = toArr(room.bag);
+  const board   = toBoardMap(room.board);
+  const turnOrder = toArr(room.turnOrder).filter(pid => room.players?.[pid]);
+  const turnIndex = typeof room.turnIndex === "number" ? room.turnIndex : 0;
+  const currentTurnId = turnOrder.length ? turnOrder[turnIndex % turnOrder.length] : null;
+  const currentTurnName = currentTurnId && room.players[currentTurnId]
+    ? room.players[currentTurnId].name
+    : "-";
+
+  document.getElementById("turn-indicator").textContent = `Turn: ${currentTurnName}`;
+  document.getElementById("flip-error").textContent = "";
 
   // Pool tiles
   const poolEl = document.getElementById("pool-tiles");
   poolEl.innerHTML = "";
-  flipped.forEach(l => {
+  for (let i = 0; i < TOTAL_TILES; i++) {
+    const l = board[i];
     const d = document.createElement("div");
-    d.className = "tile tile-up";
-    d.textContent = l;
+    d.dataset.idx = String(i);
+    if (l) {
+      d.className = "tile tile-up";
+      d.textContent = l;
+    } else {
+      d.className = "tile tile-down" + (currentTurnId === myId ? "" : " not-turn");
+      d.textContent = "?";
+    }
     poolEl.appendChild(d);
-  });
+  }
 
   document.getElementById("bag-count").textContent = bag.length;
-  document.getElementById("btn-flip").disabled = bag.length === 0;
 
   // Players
   const grid = document.getElementById("players-grid");
@@ -510,7 +595,7 @@ function renderGame(room) {
   let ci = 0;
   for (const [pid, p] of Object.entries(room.players || {})) {
     const words    = toArr(p.words);
-    const total    = words.reduce((s, w) => s + w.length, 0);
+    const total    = scoreOfPlayer(p);
     const colour   = PLAYER_COLOURS[ci++ % PLAYER_COLOURS.length];
     const card     = document.createElement("div");
     card.className = "player-card" + (pid === myId ? " is-me" : "");
@@ -519,7 +604,7 @@ function renderGame(room) {
     card.innerHTML = `
       <div class="player-header">
         <strong style="color:${colour}">${p.name}${pid === myId ? " (you)" : ""}</strong>
-        <span class="pts">${total} pts</span>
+        <span class="pts">${formatScore(total)} pts</span>
       </div>
       <div class="word-chips">
         ${words.map(w => `
@@ -539,23 +624,75 @@ function renderGame(room) {
     .map(e => `<div class="log-entry">${e.msg}</div>`).join("");
 }
 
-// ─── Flip letter ──────────────────────────────────────────────────────────────
-document.getElementById("btn-flip").onclick = async () => {
-  document.getElementById("btn-flip").disabled = true;
+document.getElementById("pool-tiles").onclick = async e => {
+  const tile = e.target.closest(".tile-down");
+  if (!tile) return;
+  const idx = Number(tile.dataset.idx);
+  if (!Number.isInteger(idx)) return;
+
+  const flipErr = document.getElementById("flip-error");
+  const room = latestRoom;
+  if (!room) return;
+
+  const turnOrder = toArr(room.turnOrder).filter(pid => room.players?.[pid]);
+  const turnIndex = typeof room.turnIndex === "number" ? room.turnIndex : 0;
+  const currentTurnId = turnOrder.length ? turnOrder[turnIndex % turnOrder.length] : null;
+  if (currentTurnId !== myId) {
+    flipErr.textContent = "Not your turn to flip.";
+    return;
+  }
+
+  const board = toBoardMap(room.board);
+  if (board[idx]) {
+    flipErr.textContent = "That tile is already revealed.";
+    return;
+  }
+
+  if (!toArr(room.bag).length) {
+    flipErr.textContent = "No letters left to flip.";
+    return;
+  }
+
+  flipErr.textContent = "";
+
   let letter = null;
+  let committed = false;
 
   await runTransaction(ref(db, `rooms/${roomId}`), room => {
-    if (!room?.bag?.length) return room;
-    letter = room.bag.shift();
-    if (!room.flipped) room.flipped = [];
+    if (!room) return room;
+
+    if (!room.players) return room;
+    let turnOrderTx = toArr(room.turnOrder).filter(pid => room.players[pid]);
+    if (!turnOrderTx.length) turnOrderTx = Object.keys(room.players);
+    const turnIndexTx = typeof room.turnIndex === "number" ? room.turnIndex : 0;
+    const currentTurnTx = turnOrderTx[turnIndexTx % turnOrderTx.length];
+    if (currentTurnTx !== myId) return;
+
+    const bagTx = toArr(room.bag);
+    if (!bagTx.length) return;
+
+    const boardTx = toBoardMap(room.board);
+    if (boardTx[idx]) return;
+
+    letter = bagTx.shift();
+    boardTx[idx] = letter;
+    room.bag = bagTx;
+    room.board = boardTx;
+    room.flipped = toArr(room.flipped);
     room.flipped.push(letter);
+
+    room.turnOrder = turnOrderTx;
+    room.turnIndex = (turnIndexTx + 1) % turnOrderTx.length;
+    committed = true;
     return room;
   });
 
-  if (letter) {
+  if (committed && letter) {
     await push(ref(db, `rooms/${roomId}/log`), {
       msg: `<span class="hi">${myName}</span> flipped a <strong>${letter}</strong>`
     });
+  } else {
+    flipErr.textContent = "Flip failed due to a game update. Try again.";
   }
 };
 
@@ -576,6 +713,7 @@ async function handleClaim() {
   errEl.textContent = "Checking word…";
   if (!await isValidWord(word)) {
     errEl.textContent = `"${word}" is not a recognised word`;
+    await penaliseInvalidWord(word);
     return;
   }
   errEl.textContent = "";
@@ -632,18 +770,12 @@ async function atomicClaim(word) {
   let committed = false;
   await runTransaction(ref(db, `rooms/${roomId}`), room => {
     if (!room) return room;
-    const pool = toArr(room.flipped);
     const wf   = freq(word);
-    const pf   = freq(pool);
+    const pf   = freq(toArr(room.flipped));
     const rem  = freqSub(wf, pf);
     if (!rem || !isEmpty(rem)) return; // abort — letters no longer available
 
-    for (const c of word) {
-      const i = pool.indexOf(c);
-      if (i === -1) return;
-      pool.splice(i, 1);
-    }
-    room.flipped = pool;
+    if (!consumeFromPoolAndBoard(room, [...word])) return;
     if (!room.players[myId].words) room.players[myId].words = [];
     else room.players[myId].words = toArr(room.players[myId].words);
     room.players[myId].words.push(word);
@@ -664,15 +796,11 @@ async function atomicSteal(newWord, targetPid, wordIdx, oldWord, extraFreq) {
     if (targetWords[wordIdx] !== oldWord) return; // already stolen
 
     // Verify extra pool letters are still available
-    const pool     = toArr(room.flipped);
     const extraArr = Object.entries(extraFreq).flatMap(([c, n]) => Array(n).fill(c));
-    for (const c of extraArr) {
-      const i = pool.indexOf(c);
-      if (i === -1) return; // letter no longer in pool
-      pool.splice(i, 1);
-    }
+    const canConsume = freqSub(freq(toArr(room.flipped)), freq(extraArr));
+    if (canConsume === null) return;
 
-    room.flipped = pool;
+    if (!consumeFromPoolAndBoard(room, extraArr)) return;
     room.players[targetPid].words = toArr(room.players[targetPid].words);
     room.players[targetPid].words.splice(wordIdx, 1);
     if (!room.players[myId].words) room.players[myId].words = [];
@@ -682,6 +810,17 @@ async function atomicSteal(newWord, targetPid, wordIdx, oldWord, extraFreq) {
     return room;
   });
   return committed;
+}
+
+async function penaliseInvalidWord(word) {
+  await runTransaction(ref(db, `rooms/${roomId}/players/${myId}/penalty`), val => {
+    const current = typeof val === "number" ? val : 0;
+    return current - 0.5;
+  });
+
+  await push(ref(db, `rooms/${roomId}/log`), {
+    msg: `<span class="hi">${myName}</span> attempted non-word <strong>${word}</strong> (-0.5 pts)`
+  });
 }
 </script>
 </body>
