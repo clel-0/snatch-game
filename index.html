@@ -923,7 +923,7 @@ function renderGame(room) {
     d.dataset.idx = String(i);
     if (!hasOwn(board, i)) {
       d.className = "tile tile-down" + (!ended && currentTurnId === myId ? "" : " not-turn");
-      d.textContent = i < TOTAL_TILES ? "?" : "";
+      d.textContent = i < TOTAL_TILES ? " " : "";
     } else if (board[i]) {
       d.className = "tile tile-up";
       d.textContent = board[i];
