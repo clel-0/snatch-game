@@ -1023,7 +1023,6 @@ async function doAutoFlip() {
 }
 
 async function doFlip(idx) {
-  let letter = null;
   let committed = false;
 
   await runTransaction(ref(db, `rooms/${roomId}`), room => {
@@ -1042,7 +1041,7 @@ async function doFlip(idx) {
     const boardTx = toBoardMap(room.board);
     if (idx >= TOTAL_TILES || hasOwn(boardTx, idx)) return;
 
-    letter = bagTx.shift();
+    const letter = bagTx.shift();
     boardTx[idx] = letter;
     room.bag = bagTx;
     room.board = boardTx;
@@ -1055,11 +1054,7 @@ async function doFlip(idx) {
     return room;
   });
 
-  if (committed && letter) {
-    await push(ref(db, `rooms/${roomId}/log`), {
-      msg: `<span class="hi">${myName}</span> flipped a <strong>${letter}</strong>`
-    });
-  } else if (!committed) {
+  if (!committed) {
     document.getElementById("flip-error").textContent = "Flip failed due to a game update. Try again.";
   }
 }
