@@ -765,8 +765,8 @@ async function handleClaim() {
   const poolFreq = freq(flipped);
 
   // ── Option 1: claim entirely from pool ──────────────────────────────────────
-  const poolRem = freqSub(wordFreq, poolFreq);
-  if (poolRem !== null && isEmpty(poolRem)) {
+  const canClaimFromPool = freqSub(poolFreq, wordFreq) !== null;
+  if (canClaimFromPool) {
     const ok = await atomicClaim(word);
     if (ok) {
       document.getElementById("inp-word").value = "";
@@ -811,8 +811,7 @@ async function atomicClaim(word) {
     if (!room) return room;
     const wf   = freq(word);
     const pf   = freq(toArr(room.flipped));
-    const rem  = freqSub(wf, pf);
-    if (!rem || !isEmpty(rem)) return; // abort — letters no longer available
+    if (freqSub(pf, wf) === null) return; // abort — letters no longer available
 
     if (!consumeFromPoolAndBoard(room, [...word])) return;
     if (!room.players[myId].words) room.players[myId].words = [];
