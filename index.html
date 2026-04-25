@@ -1056,6 +1056,7 @@ async function handleClaim() {
       const extraFreq = freqSub(wordFreq, freq(existing));
       if (!extraFreq)           continue; // new word is missing some existing letters
       if (isEmpty(extraFreq))   continue; // no new letters added — not a valid steal
+      if (word.startsWith(existing)) continue; // pure suffix addition — no rearrangement
       if (!freqSub(poolFreq, extraFreq)) continue; // extra letters not all in pool
 
       const ok = await atomicSteal(word, pid, wi, existing, extraFreq);
