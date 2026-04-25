@@ -134,7 +134,7 @@
     #turn-indicator { color: #fbbf24; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
     .tiles {
       display: grid;
-      grid-template-columns: repeat(14, minmax(0, 1fr));
+      grid-template-columns: repeat(20, minmax(0, 1fr));
       gap: 8px;
       min-height: 360px;
     }
@@ -159,6 +159,11 @@
       user-select: none;
     }
     .tile-down.not-turn { cursor: not-allowed; opacity: 0.65; }
+    .tile-gone {
+      background: transparent;
+      border: 2px solid transparent;
+      box-shadow: none;
+    }
 
     /* Action area */
     .action-row { display: flex; gap: 10px; }
@@ -168,6 +173,18 @@
     .flip-row { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
     .flip-row .btn  { width: auto; padding: 10px 28px; }
     .flip-row .hint { color: #6b7280; font-size: 0.85rem; }
+
+    .vote-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .vote-note {
+      color: #9ca3af;
+      font-size: 0.85rem;
+    }
 
     /* Players */
     .players-grid {
@@ -297,7 +314,7 @@
       <h2>Flip &amp; Claim</h2>
       <div class="flip-row"><span class="hint">Click a hidden tile in the grid to flip a letter on your turn</span></div>
       <div class="section-label">
-        Type a word to claim it from the pool — or steal a player's word by using all their letters plus at least one from the pool
+        Type a word to claim it from the pool — or steal a player's word by using all their letters plus at least one from the pool. Words must be at least 5 letters.
       </div>
       <div class="action-row">
         <input type="text" id="inp-word" placeholder="Type a word…" autocomplete="off"
@@ -306,6 +323,10 @@
       </div>
       <p class="error" id="flip-error"></p>
       <p class="error" id="claim-error"></p>
+      <div class="vote-row">
+        <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">Suggest End Game</button>
+        <span class="vote-note" id="vote-note"></span>
+      </div>
     </div>
 
     <!-- Players -->
@@ -344,6 +365,9 @@ const DIST = {
   L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1
 };
 const TOTAL_TILES = Object.values(DIST).reduce((s, n) => s + n, 0);
+const GRID_COLUMNS = 20;
+const GRID_ROWS = 5;
+const GRID_TILES = GRID_COLUMNS * GRID_ROWS;
 
 function makeBag() {
   const bag = [];
@@ -409,6 +433,10 @@ function toBoardMap(val) {
   return { ...val };
 }
 
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
 function scoreOfPlayer(p) {
   const words = toArr(p.words);
   const base = words.reduce((s, w) => s + w.length, 0);
@@ -431,7 +459,7 @@ function consumeFromPoolAndBoard(room, letters) {
 
     const key = Object.keys(board).find(k => board[k] === c);
     if (key === undefined) return false;
-    delete board[key];
+    board[key] = "";
   }
 
   room.flipped = pool;
@@ -478,7 +506,7 @@ async function maybeMigrateRoom(room) {
 }
 
 async function isValidWord(word) {
-  if (word.length < 4) return false;
+  if (word.length < 5) return false;
   try {
     const res = await fetch(
       `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`
@@ -511,6 +539,7 @@ document.getElementById("btn-create").onclick = async () => {
     board:   {},
     turnOrder: [myId],
     turnIndex: 0,
+    endProposal: null,
     players: { [myId]: { name: myName, words: [], penalty: 0 } }
   });
 
@@ -596,7 +625,6 @@ function openGame() {
 const PLAYER_COLOURS = ["#fbbf24","#34d399","#60a5fa","#f472b6","#a78bfa","#fb923c"];
 
 function renderGame(room) {
-  const flipped = toArr(room.flipped);
   const bag     = toArr(room.bag);
   const board   = toBoardMap(room.board);
   const turnOrder = toArr(room.turnOrder).filter(pid => room.players?.[pid]);
@@ -605,23 +633,49 @@ function renderGame(room) {
   const currentTurnName = currentTurnId && room.players[currentTurnId]
     ? room.players[currentTurnId].name
     : "-";
+  const ended = room.status === "ended";
+  const proposal = room.endProposal && typeof room.endProposal === "object" ? room.endProposal : null;
+  const approvals = proposal?.approvals && typeof proposal.approvals === "object" ? proposal.approvals : {};
+  const approvalCount = turnOrder.filter(pid => approvals[pid]).length;
+  const voteNoteEl = document.getElementById("vote-note");
+  const voteBtn = document.getElementById("btn-end-vote");
 
-  document.getElementById("turn-indicator").textContent = `Turn: ${currentTurnName}`;
+  document.getElementById("turn-indicator").textContent = ended ? "Game ended" : `Turn: ${currentTurnName}`;
   document.getElementById("flip-error").textContent = "";
+  document.getElementById("btn-claim").disabled = ended;
+  document.getElementById("inp-word").disabled = ended;
+
+  if (ended) {
+    voteBtn.textContent = "Game Ended";
+    voteBtn.disabled = true;
+    voteNoteEl.textContent = "Everyone agreed to end the game.";
+  } else if (proposal) {
+    const proposerName = room.players?.[proposal.proposer]?.name || "A player";
+    const alreadyApproved = !!approvals[myId];
+    voteBtn.disabled = false;
+    voteBtn.textContent = alreadyApproved ? "Agreed" : "Agree End Game";
+    voteNoteEl.textContent = `${proposerName} suggested ending the game (${approvalCount}/${turnOrder.length} agreed).`;
+  } else {
+    voteBtn.disabled = false;
+    voteBtn.textContent = "Suggest End Game";
+    voteNoteEl.textContent = "";
+  }
 
   // Pool tiles
   const poolEl = document.getElementById("pool-tiles");
   poolEl.innerHTML = "";
-  for (let i = 0; i < TOTAL_TILES; i++) {
-    const l = board[i];
+  for (let i = 0; i < GRID_TILES; i++) {
     const d = document.createElement("div");
     d.dataset.idx = String(i);
-    if (l) {
+    if (!hasOwn(board, i)) {
+      d.className = "tile tile-down" + (!ended && currentTurnId === myId ? "" : " not-turn");
+      d.textContent = i < TOTAL_TILES ? "?" : "";
+    } else if (board[i]) {
       d.className = "tile tile-up";
-      d.textContent = l;
+      d.textContent = board[i];
     } else {
-      d.className = "tile tile-down" + (currentTurnId === myId ? "" : " not-turn");
-      d.textContent = "?";
+      d.className = "tile tile-gone";
+      d.textContent = "";
     }
     poolEl.appendChild(d);
   }
@@ -676,13 +730,20 @@ document.getElementById("pool-tiles").onclick = async e => {
   const turnOrder = toArr(room.turnOrder).filter(pid => room.players?.[pid]);
   const turnIndex = typeof room.turnIndex === "number" ? room.turnIndex : 0;
   const currentTurnId = turnOrder.length ? turnOrder[turnIndex % turnOrder.length] : null;
+  if (room.status === "ended") {
+    flipErr.textContent = "The game has ended.";
+    return;
+  }
   if (currentTurnId !== myId) {
     flipErr.textContent = "Not your turn to flip.";
     return;
   }
 
   const board = toBoardMap(room.board);
-  if (board[idx]) {
+  if (idx >= TOTAL_TILES) {
+    return;
+  }
+  if (hasOwn(board, idx)) {
     flipErr.textContent = "That tile is already revealed.";
     return;
   }
@@ -711,7 +772,7 @@ document.getElementById("pool-tiles").onclick = async e => {
     if (!bagTx.length) return;
 
     const boardTx = toBoardMap(room.board);
-    if (boardTx[idx]) return;
+    if (idx >= TOTAL_TILES || hasOwn(boardTx, idx)) return;
 
     letter = bagTx.shift();
     boardTx[idx] = letter;
@@ -744,8 +805,13 @@ async function handleClaim() {
   const errEl = document.getElementById("claim-error");
   errEl.textContent = "";
 
-  if (word.length < 4) {
-    errEl.textContent = "Words must be at least 4 letters";
+  if (latestRoom?.status === "ended") {
+    errEl.textContent = "The game has ended.";
+    return;
+  }
+
+  if (word.length < 5) {
+    errEl.textContent = "Words must be at least 5 letters";
     return;
   }
 
@@ -860,6 +926,37 @@ async function penaliseInvalidWord(word) {
     msg: `<span class="hi">${myName}</span> attempted non-word <strong>${word}</strong> (-0.5 pts)`
   });
 }
+
+document.getElementById("btn-end-vote").onclick = async () => {
+  const errEl = document.getElementById("claim-error");
+  errEl.textContent = "";
+
+  await runTransaction(ref(db, `rooms/${roomId}`), room => {
+    if (!room || room.status === "ended" || !room.players?.[myId]) return room;
+
+    const turnOrder = toArr(room.turnOrder).filter(pid => room.players[pid]);
+    const approvals = room.endProposal?.approvals && typeof room.endProposal.approvals === "object"
+      ? { ...room.endProposal.approvals }
+      : {};
+
+    if (!room.endProposal || typeof room.endProposal !== "object") {
+      approvals[myId] = true;
+      room.endProposal = {
+        proposer: myId,
+        approvals
+      };
+      return room;
+    }
+
+    approvals[myId] = true;
+    room.endProposal.approvals = approvals;
+    const everyoneApproved = turnOrder.length > 0 && turnOrder.every(pid => approvals[pid]);
+    if (everyoneApproved) {
+      room.status = "ended";
+    }
+    return room;
+  });
+};
 </script>
 </body>
 </html>
