@@ -380,6 +380,13 @@ function freqSub(a, b) {
 
 const isEmpty = obj => Object.keys(obj).length === 0;
 
+// Firebase can return arrays as objects with numeric keys — normalize back to array
+function toArr(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  return Object.values(val);
+}
+
 async function isValidWord(word) {
   if (word.length < 4) return false;
   try {
@@ -481,8 +488,8 @@ function openGame() {
 const PLAYER_COLOURS = ["#fbbf24","#34d399","#60a5fa","#f472b6","#a78bfa","#fb923c"];
 
 function renderGame(room) {
-  const flipped = room.flipped || [];
-  const bag     = room.bag     || [];
+  const flipped = toArr(room.flipped);
+  const bag     = toArr(room.bag);
 
   // Pool tiles
   const poolEl = document.getElementById("pool-tiles");
@@ -502,7 +509,7 @@ function renderGame(room) {
   grid.innerHTML = "";
   let ci = 0;
   for (const [pid, p] of Object.entries(room.players || {})) {
-    const words    = Array.isArray(p.words) ? p.words : [];
+    const words    = toArr(p.words);
     const total    = words.reduce((s, w) => s + w.length, 0);
     const colour   = PLAYER_COLOURS[ci++ % PLAYER_COLOURS.length];
     const card     = document.createElement("div");
@@ -576,7 +583,7 @@ async function handleClaim() {
   const snap = await get(ref(db, `rooms/${roomId}`));
   if (!snap.exists()) return;
   const room     = snap.val();
-  const flipped  = room.flipped || [];
+  const flipped  = toArr(room.flipped);
   const wordFreq = freq(word);
   const poolFreq = freq(flipped);
 
@@ -597,7 +604,7 @@ async function handleClaim() {
 
   // ── Option 2: steal from a player ───────────────────────────────────────────
   for (const [pid, p] of Object.entries(room.players || {})) {
-    const words = Array.isArray(p.words) ? p.words : [];
+    const words = toArr(p.words);
     for (let wi = 0; wi < words.length; wi++) {
       const existing  = words[wi];
       const extraFreq = freqSub(wordFreq, freq(existing));
@@ -625,7 +632,7 @@ async function atomicClaim(word) {
   let committed = false;
   await runTransaction(ref(db, `rooms/${roomId}`), room => {
     if (!room) return room;
-    const pool = [...(room.flipped || [])];
+    const pool = toArr(room.flipped);
     const wf   = freq(word);
     const pf   = freq(pool);
     const rem  = freqSub(wf, pf);
@@ -638,6 +645,7 @@ async function atomicClaim(word) {
     }
     room.flipped = pool;
     if (!room.players[myId].words) room.players[myId].words = [];
+    else room.players[myId].words = toArr(room.players[myId].words);
     room.players[myId].words.push(word);
     committed = true;
     return room;
@@ -652,12 +660,11 @@ async function atomicSteal(newWord, targetPid, wordIdx, oldWord, extraFreq) {
     if (!room) return room;
 
     // Verify the target word still exists unchanged
-    const targetWords = Array.isArray(room.players[targetPid]?.words)
-      ? room.players[targetPid].words : [];
+    const targetWords = toArr(room.players[targetPid]?.words);
     if (targetWords[wordIdx] !== oldWord) return; // already stolen
 
     // Verify extra pool letters are still available
-    const pool     = [...(room.flipped || [])];
+    const pool     = toArr(room.flipped);
     const extraArr = Object.entries(extraFreq).flatMap(([c, n]) => Array(n).fill(c));
     for (const c of extraArr) {
       const i = pool.indexOf(c);
@@ -666,8 +673,10 @@ async function atomicSteal(newWord, targetPid, wordIdx, oldWord, extraFreq) {
     }
 
     room.flipped = pool;
+    room.players[targetPid].words = toArr(room.players[targetPid].words);
     room.players[targetPid].words.splice(wordIdx, 1);
     if (!room.players[myId].words) room.players[myId].words = [];
+    else room.players[myId].words = toArr(room.players[myId].words);
     room.players[myId].words.push(newWord);
     committed = true;
     return room;
