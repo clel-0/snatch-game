@@ -646,7 +646,6 @@ function openWaiting() {
 
   if (isHost) {
     document.getElementById("btn-start").style.display = "block";
-    document.getElementById("waiting-note").style.display = "none";
   }
 
   if (unsubscribe) unsubscribe();
@@ -719,7 +718,7 @@ function renderGame(room) {
     voteNoteEl.textContent = `${proposerName} suggested ending the game (${approvalCount}/${turnOrder.length} agreed).`;
   } else {
     voteBtn.disabled = false;
-    voteBtn.textContent = "Suggest End Game";
+    voteBtn.textContent = "Just end the game vro, there's prob no more words left";
     voteNoteEl.textContent = "";
   }
 
