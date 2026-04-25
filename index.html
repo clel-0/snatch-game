@@ -458,7 +458,6 @@
         <!-- Actions -->
         <div class="card" style="margin-bottom:0">
           <h2>Flip &amp; Claim</h2>
-          <div class="flip-row"><span class="hint">Click a hidden tile in the grid to flip a letter on your turn</span></div>
           <div class="autoflip-row">
             <input type="checkbox" id="chk-autoflip">
             <span>Auto-flip every</span>
@@ -469,13 +468,13 @@
             Type a word to claim it from the pool, or steal a player's word by using all their letters plus at least one from the pool. 
             Words must be at least 5 letters.
           </div>
+          <p class="error" id="claim-error"></p>
           <div class="action-row">
             <input type="text" id="inp-word" placeholder="Type a word…" autocomplete="off"
                   style="text-transform:uppercase;letter-spacing:3px">
             <button class="btn btn-green" id="btn-claim">Claim</button>
           </div>
           <p class="error" id="flip-error"></p>
-          <p class="error" id="claim-error"></p>
           <div class="vote-row">
             <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">Just end the game vro, there's prob no more words left</button>
             <span class="vote-note" id="vote-note"></span>
@@ -516,14 +515,62 @@ const DIST = {
   A:13,B:3,C:3,D:6,E:17,F:3,G:4,H:3,I:13,J:1,K:1,
   L:6,M:3,N:9,O:12,P:3,Q:1,R:9,S:7,T:10,U:6,V:3,W:3,X:1,Y:3,Z:1
 };
-const TOTAL_TILES = Object.values(DIST).reduce((s, n) => s + n, 0);
 const GRID_COLUMNS = 16;
 const GRID_ROWS = 9;
 const GRID_TILES = GRID_COLUMNS * GRID_ROWS;
+const TOTAL_TILES = GRID_TILES;
+
+function randomNormal(mean, stdDev) {
+  const u1 = Math.max(Math.random(), 1e-12);
+  const u2 = Math.random();
+  const z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return mean + z0 * stdDev;
+}
+
+function stdDevForMean(mean) {
+  if (mean <= 1) return 0.1;
+  if (mean <= 3) return 0.2;
+  if (mean <= 7) return 0.45;
+  return 0.7;
+}
+
+function sampleLetterCounts(totalLetters) {
+  const letters = Object.keys(DIST);
+  const weights = {};
+  let weightSum = 0;
+
+  for (const letter of letters) {
+    const mean = DIST[letter];
+    const stdDev = stdDevForMean(mean);
+    const sampled = Math.max(0.001, randomNormal(mean, stdDev));
+    weights[letter] = sampled;
+    weightSum += sampled;
+  }
+
+  const expected = letters.map(letter => {
+    const exact = (weights[letter] / weightSum) * totalLetters;
+    const base = Math.floor(exact);
+    return { letter, base, frac: exact - base };
+  });
+
+  let assigned = expected.reduce((sum, item) => sum + item.base, 0);
+  let remaining = totalLetters - assigned;
+
+  expected.sort((a, b) => b.frac - a.frac);
+  for (let i = 0; i < expected.length && remaining > 0; i++) {
+    expected[i].base += 1;
+    remaining -= 1;
+  }
+
+  const out = {};
+  for (const item of expected) out[item.letter] = item.base;
+  return out;
+}
 
 function makeBag() {
+  const sampledCounts = sampleLetterCounts(TOTAL_TILES);
   const bag = [];
-  for (const [l, n] of Object.entries(DIST))
+  for (const [l, n] of Object.entries(sampledCounts))
     for (let i = 0; i < n; i++) bag.push(l);
   // Fisher-Yates shuffle
   for (let i = bag.length - 1; i > 0; i--) {
