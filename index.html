@@ -101,7 +101,7 @@
     }
 
     /* Game */
-    #game-screen .wrap { max-width: 960px; margin: 0 auto; }
+    #game-screen .wrap { max-width: 1200px; margin: 0 auto; }
 
     .topbar {
       display: flex;
@@ -117,12 +117,41 @@
     }
     .room-badge strong { color: #fbbf24; }
 
-    /* Pool */
-    .pool-card {
+    .game-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 1.8fr 1fr;
+      grid-template-rows: 2fr 1fr;
+      gap: 14px;
+      min-height: 72vh;
+    }
+    .zone {
       background: #1f2937;
       border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .zone-top-left { grid-column: 1; grid-row: 1; }
+    .zone-top-right { grid-column: 2 / 4; grid-row: 1; }
+    .zone-bottom-left {
+      grid-column: 1;
+      grid-row: 2;
+      background: transparent;
+      border: 2px dashed #374151;
+      opacity: 0.45;
+    }
+    .zone-bottom-center { grid-column: 2; grid-row: 2; }
+    .zone-bottom-right { grid-column: 3; grid-row: 2; }
+
+    /* Pool */
+    .pool-card {
+      background: transparent;
+      border-radius: 0;
+      padding: 0;
+      margin-bottom: 0;
+      flex: 1;
+      min-height: 0;
     }
     .pool-header {
       display: flex;
@@ -137,6 +166,7 @@
       grid-template-columns: repeat(20, minmax(0, 1fr));
       gap: 8px;
       min-height: 360px;
+      flex: 1;
     }
     .tile {
       width: 100%;
@@ -191,7 +221,9 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       gap: 14px;
-      margin-bottom: 16px;
+      margin-bottom: 0;
+      overflow-y: auto;
+      padding-right: 2px;
     }
     .player-card {
       background: #1f2937;
@@ -226,7 +258,9 @@
       background: #1f2937;
       border-radius: 12px;
       padding: 14px 16px;
-      max-height: 150px;
+      max-height: none;
+      height: 100%;
+      min-height: 180px;
       overflow-y: auto;
     }
     .log-entry { font-size: 0.85rem; color: #9ca3af; padding: 2px 0; }
@@ -313,6 +347,20 @@
     }
 
     @media (max-width: 800px) {
+      .game-layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        min-height: auto;
+      }
+      .zone-top-left,
+      .zone-top-right,
+      .zone-bottom-left,
+      .zone-bottom-center,
+      .zone-bottom-right {
+        grid-column: 1;
+        grid-row: auto;
+      }
+      .zone-bottom-left { display: none; }
       .tiles {
         grid-template-columns: repeat(10, minmax(0, 1fr));
       }
@@ -370,7 +418,7 @@
       <div class="autoflip-row">
         <input type="checkbox" id="chk-prefix">
         <span>Require names to start with</span>
-        <input type="text" id="inp-prefix" placeholder="e.g. word" maxlength="20" autocomplete="off"
+        <input type="text" id="inp-prefix" placeholder="e.g. Team_" maxlength="20" autocomplete="off"
                style="margin-bottom:0;font-size:0.85rem;padding:4px 8px;flex:1">
       </div>
     </div>
@@ -387,42 +435,6 @@
       <div style="color:#6b7280;font-size:0.85rem"><span id="bag-count">0</span> letters left in bag</div>
     </div>
 
-    <!-- Pool -->
-    <div class="pool-card">
-      <div class="pool-header">
-        <span>Letter Pool</span>
-        <span id="turn-indicator">Turn: -</span>
-      </div>
-      <div class="tiles" id="pool-tiles"></div>
-    </div>
-
-    <!-- Actions -->
-    <div class="card" style="margin-bottom:16px">
-      <h2>Flip &amp; Claim</h2>
-      <div class="flip-row"><span class="hint">Click a hidden tile in the grid to flip a letter on your turn</span></div>
-      <div class="autoflip-row">
-        <input type="checkbox" id="chk-autoflip">
-        <span>Auto-flip every</span>
-        <input type="number" id="inp-autoflip-secs" value="10" min="1" max="300">
-        <span>seconds</span>
-      </div>
-      <div class="section-label">
-        Type a word to claim it from the pool, or steal a player's word by using all their letters plus at least one from the pool. 
-        Words must be at least 5 letters.
-      </div>
-      <div class="action-row">
-        <input type="text" id="inp-word" placeholder="Type a word…" autocomplete="off"
-               style="text-transform:uppercase;letter-spacing:3px">
-        <button class="btn btn-green" id="btn-claim">Claim</button>
-      </div>
-      <p class="error" id="flip-error"></p>
-      <p class="error" id="claim-error"></p>
-      <div class="vote-row">
-        <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">Just end the game vro, there's prob no more words left</button>
-        <span class="vote-note" id="vote-note"></span>
-      </div>
-    </div>
-
     <!-- Winner summary -->
     <div id="winner-banner">
       <h2>GAME OVER</h2>
@@ -433,14 +445,60 @@
       </table>
     </div>
 
-    <!-- Players -->
-    <div class="section-label">Players</div>
-    <div class="players-grid" id="players-grid"></div>
+    <div class="game-layout">
+      <div class="zone zone-top-left">
+        <div class="section-label">Players</div>
+        <div class="players-grid" id="players-grid"></div>
+      </div>
 
-    <!-- Log -->
-    <div class="section-label">Game Log</div>
-    <div class="log-box" id="log-box"></div>
+      <div class="zone zone-top-right">
+        <!-- Pool -->
+        <div class="pool-card">
+          <div class="pool-header">
+            <span>Letter Pool</span>
+            <span id="turn-indicator">Turn: -</span>
+          </div>
+          <div class="tiles" id="pool-tiles"></div>
+        </div>
+      </div>
 
+      <div class="zone zone-bottom-left"></div>
+
+      <div class="zone zone-bottom-center">
+        <!-- Actions -->
+        <div class="card" style="margin-bottom:0">
+          <h2>Flip &amp; Claim</h2>
+          <div class="flip-row"><span class="hint">Click a hidden tile in the grid to flip a letter on your turn</span></div>
+          <div class="autoflip-row">
+            <input type="checkbox" id="chk-autoflip">
+            <span>Auto-flip every</span>
+            <input type="number" id="inp-autoflip-secs" value="10" min="1" max="300">
+            <span>seconds</span>
+          </div>
+          <div class="section-label">
+            Type a word to claim it from the pool, or steal a player's word by using all their letters plus at least one from the pool. 
+            Words must be at least 5 letters.
+          </div>
+          <div class="action-row">
+            <input type="text" id="inp-word" placeholder="Type a word…" autocomplete="off"
+                  style="text-transform:uppercase;letter-spacing:3px">
+            <button class="btn btn-green" id="btn-claim">Claim</button>
+          </div>
+          <p class="error" id="flip-error"></p>
+          <p class="error" id="claim-error"></p>
+          <div class="vote-row">
+            <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">Just end the game vro, there's prob no more words left</button>
+            <span class="vote-note" id="vote-note"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="zone zone-bottom-right">
+        <!-- Log -->
+        <div class="section-label">Game Log</div>
+        <div class="log-box" id="log-box"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1127,6 +1185,9 @@ async function handleClaim() {
   }
 
   errEl.textContent = "Can't form that word from the pool or by stealing";
+  await push(ref(db, `rooms/${roomId}/log`), {
+    msg: `<span class="hi">${myName}</span> tried <strong>${word}</strong>`
+  });
 }
 
 // Atomically claim a word from the pool
@@ -1182,7 +1243,7 @@ async function penaliseInvalidWord(word) {
   });
 
   await push(ref(db, `rooms/${roomId}/log`), {
-    msg: `<span class="hi">${myName}</span> attempted non-word <strong>${word}</strong> (-0.5 pts)`
+    msg: `<span class="hi">${myName}</span> tried the invalid word <strong>${word}</strong>. -0.5 pts`
   });
 }
 
