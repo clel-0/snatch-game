@@ -120,7 +120,7 @@
     .game-layout {
       display: grid;
       grid-template-columns: 1fr 1.3fr 0.7fr;
-      grid-template-rows: 1fr 200px;
+      grid-template-rows: 1fr 240px;
       gap: 14px;
       height: calc(100vh - 148px);
     }
@@ -157,7 +157,7 @@
     #turn-indicator { color: #fbbf24; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
     .tiles {
       display: grid;
-      grid-template-columns: repeat(20, minmax(0, 1fr));
+      grid-template-columns: repeat(15, minmax(0, 1fr));
       gap: 5px;
       flex: 1;
       align-content: start;
@@ -515,8 +515,8 @@ const DIST = {
   L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:5,T:7,U:4,V:2,W:2,X:1,Y:2,Z:1
 };
 const TOTAL_TILES = Object.values(DIST).reduce((s, n) => s + n, 0);
-const GRID_COLUMNS = 20;
-const GRID_ROWS = 5;
+const GRID_COLUMNS = 15;
+const GRID_ROWS = 8;
 const GRID_TILES = GRID_COLUMNS * GRID_ROWS;
 
 function makeBag() {
