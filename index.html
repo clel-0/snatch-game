@@ -119,28 +119,22 @@
 
     .game-layout {
       display: grid;
-      grid-template-columns: 1.2fr 1.8fr 1fr;
-      grid-template-rows: 2fr 1fr;
+      grid-template-columns: 220px 1fr 280px;
+      grid-template-rows: 1fr auto;
       gap: 14px;
-      min-height: 72vh;
+      height: calc(100vh - 148px);
     }
     .zone {
       background: #1f2937;
       border-radius: 12px;
-      padding: 16px;
+      padding: 14px;
       display: flex;
       flex-direction: column;
       min-height: 0;
+      overflow: hidden;
     }
-    .zone-top-left { grid-column: 1; grid-row: 1; }
+    .zone-players  { grid-column: 1; grid-row: 1 / 3; overflow-y: auto; }
     .zone-top-right { grid-column: 2 / 4; grid-row: 1; }
-    .zone-bottom-left {
-      grid-column: 1;
-      grid-row: 2;
-      background: transparent;
-      border: 2px dashed #374151;
-      opacity: 0.45;
-    }
     .zone-bottom-center { grid-column: 2; grid-row: 2; }
     .zone-bottom-right { grid-column: 3; grid-row: 2; }
 
@@ -164,18 +158,18 @@
     .tiles {
       display: grid;
       grid-template-columns: repeat(20, minmax(0, 1fr));
-      gap: 8px;
-      min-height: 360px;
+      gap: 5px;
       flex: 1;
+      align-content: start;
     }
     .tile {
       width: 100%;
-      aspect-ratio: 5 / 6;
-      border-radius: 8px;
+      aspect-ratio: 1 / 1;
+      border-radius: 5px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.5rem;
+      font-size: 0.95rem;
       font-weight: bold;
       transition: transform 0.15s;
     }
@@ -219,16 +213,15 @@
     /* Players */
     .players-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
       margin-bottom: 0;
-      overflow-y: auto;
       padding-right: 2px;
     }
     .player-card {
-      background: #1f2937;
-      border-radius: 12px;
-      padding: 16px;
+      background: #374151;
+      border-radius: 8px;
+      padding: 10px;
       border: 2px solid transparent;
     }
     .player-card.is-me { border-color: #fbbf24; }
@@ -257,10 +250,8 @@
     .log-box {
       background: #1f2937;
       border-radius: 12px;
-      padding: 14px 16px;
-      max-height: none;
-      height: 100%;
-      min-height: 180px;
+      padding: 10px 14px;
+      flex: 1;
       overflow-y: auto;
     }
     .log-entry { font-size: 0.85rem; color: #9ca3af; padding: 2px 0; }
@@ -350,17 +341,16 @@
       .game-layout {
         grid-template-columns: 1fr;
         grid-template-rows: auto;
-        min-height: auto;
+        height: auto;
       }
-      .zone-top-left,
+      .zone-players,
       .zone-top-right,
-      .zone-bottom-left,
       .zone-bottom-center,
       .zone-bottom-right {
         grid-column: 1;
         grid-row: auto;
       }
-      .zone-bottom-left { display: none; }
+      .players-grid { grid-template-columns: repeat(2, 1fr); }
       .tiles {
         grid-template-columns: repeat(10, minmax(0, 1fr));
       }
@@ -446,7 +436,7 @@
     </div>
 
     <div class="game-layout">
-      <div class="zone zone-top-left">
+      <div class="zone zone-players">
         <div class="section-label">Players</div>
         <div class="players-grid" id="players-grid"></div>
       </div>
@@ -461,8 +451,6 @@
           <div class="tiles" id="pool-tiles"></div>
         </div>
       </div>
-
-      <div class="zone zone-bottom-left"></div>
 
       <div class="zone zone-bottom-center">
         <!-- Actions -->
