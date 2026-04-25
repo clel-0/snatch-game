@@ -240,6 +240,56 @@
       margin-bottom: 8px;
     }
 
+    /* Winner summary */
+    #winner-banner {
+      display: none;
+      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+      border: 2px solid #fbbf24;
+      border-radius: 16px;
+      padding: 28px 24px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    #winner-banner.visible { display: block; }
+    #winner-banner h2 {
+      font-size: 1.6rem;
+      color: #fbbf24;
+      letter-spacing: 3px;
+      margin-bottom: 4px;
+    }
+    #winner-banner .winner-name {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 20px;
+    }
+    .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 auto;
+      max-width: 480px;
+    }
+    .results-table th {
+      color: #6b7280;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding-bottom: 8px;
+      text-align: left;
+    }
+    .results-table th:last-child { text-align: right; }
+    .results-table td {
+      padding: 7px 0;
+      border-top: 1px solid #374151;
+      font-size: 0.95rem;
+    }
+    .results-table td:last-child { text-align: right; font-weight: 700; }
+    .results-table tr.rank-1 td { color: #fbbf24; }
+    .results-table .rank-num {
+      color: #6b7280;
+      font-size: 0.85rem;
+      padding-right: 12px;
+    }
+
     @media (max-width: 800px) {
       .tiles {
         grid-template-columns: repeat(10, minmax(0, 1fr));
@@ -253,7 +303,7 @@
 <body>
 
 <h1>SNATCH</h1>
-<p class="tagline">Steal letters. Build words. Take everything.</p>
+<p class="tagline">Time to get snatching</p>
 
 <!-- ── LOBBY ──────────────────────────────────────────────── -->
 <div id="lobby-screen" class="screen active">
@@ -286,7 +336,7 @@
       <ul class="player-list" id="waiting-players"></ul>
       <br>
       <button class="btn btn-green" id="btn-start" style="display:none">Start Game</button>
-      <p style="color:#6b7280;font-size:0.85rem" id="waiting-note">Waiting for host to start…</p>
+      <p style="color:#6b7280;font-size:0.85rem" id="waiting-note">Stop scrolling reels host and start the game plz</p>
     </div>
   </div>
 </div>
@@ -314,7 +364,8 @@
       <h2>Flip &amp; Claim</h2>
       <div class="flip-row"><span class="hint">Click a hidden tile in the grid to flip a letter on your turn</span></div>
       <div class="section-label">
-        Type a word to claim it from the pool — or steal a player's word by using all their letters plus at least one from the pool. Words must be at least 5 letters.
+        Type a word to claim it from the pool, or steal a player's word by using all their letters plus at least one from the pool. 
+        Words must be at least 5 letters.
       </div>
       <div class="action-row">
         <input type="text" id="inp-word" placeholder="Type a word…" autocomplete="off"
@@ -324,9 +375,20 @@
       <p class="error" id="flip-error"></p>
       <p class="error" id="claim-error"></p>
       <div class="vote-row">
-        <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">Suggest End Game</button>
+        <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">[END GAME BUTTON]
+            (Just end the game vro, there's prob no more words left)</button>
         <span class="vote-note" id="vote-note"></span>
       </div>
+    </div>
+
+    <!-- Winner summary -->
+    <div id="winner-banner">
+      <h2>GAME OVER</h2>
+      <div class="winner-name" id="winner-name"></div>
+      <table class="results-table" id="results-table">
+        <thead><tr><th></th><th>Player</th><th>Words</th><th>Score</th></tr></thead>
+        <tbody id="results-body"></tbody>
+      </table>
     </div>
 
     <!-- Players -->
@@ -681,6 +743,32 @@ function renderGame(room) {
   }
 
   document.getElementById("bag-count").textContent = bag.length;
+
+  // Winner summary
+  const banner = document.getElementById("winner-banner");
+  if (ended) {
+    const ranked = Object.entries(room.players || {})
+      .map(([pid, p]) => ({ pid, name: p.name, words: toArr(p.words), score: scoreOfPlayer(p) }))
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+    const topScore = ranked[0]?.score ?? 0;
+    const winners = ranked.filter(r => r.score === topScore);
+    const winnerLabel = winners.map(r => r.name + (r.pid === myId ? " (you)" : "")).join(" & ");
+    document.getElementById("winner-name").textContent =
+      winners.length > 1 ? `🏆 It's a tie: ${winnerLabel}` : `🏆 ${winnerLabel} wins!`;
+
+    const tbody = document.getElementById("results-body");
+    tbody.innerHTML = ranked.map((r, i) => `
+      <tr class="${i === 0 ? 'rank-1' : ''}">
+        <td class="rank-num">#${i + 1}</td>
+        <td>${r.name}${r.pid === myId ? " <span style='color:#6b7280;font-size:0.8rem'>(you)</span>" : ""}</td>
+        <td>${r.words.length}</td>
+        <td>${formatScore(r.score)}</td>
+      </tr>`).join("");
+
+    banner.classList.add("visible");
+  } else {
+    banner.classList.remove("visible");
+  }
 
   // Players
   const grid = document.getElementById("players-grid");
