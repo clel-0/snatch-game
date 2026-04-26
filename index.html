@@ -120,7 +120,7 @@
     .game-layout {
       display: grid;
       grid-template-columns: 1fr 1.3fr 0.7fr;
-      grid-template-rows: 1fr 240px;
+      grid-template-rows: 1fr clamp(180px, 22vh, 280px);
       gap: 14px;
       height: calc(100vh - 148px);
     }
@@ -843,11 +843,11 @@ function resizePoolTiles() {
   const rect = poolEl.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
 
-  const gap = rect.width < 740 ? 3 : 5;
+  const gap = rect.width < 560 ? 2 : rect.width < 900 ? 4 : 5;
   const maxByWidth = (rect.width - gap * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
   const maxByHeight = (rect.height - gap * (GRID_ROWS - 1)) / GRID_ROWS;
-  const tileSize = Math.max(13, Math.floor(Math.min(maxByWidth, maxByHeight)));
-  const tileFontSize = Math.max(10, Math.floor(tileSize * 0.48));
+  const tileSize = Math.max(16, Math.floor(Math.min(maxByWidth, maxByHeight)));
+  const tileFontSize = Math.max(11, Math.floor(tileSize * 0.56));
 
   poolEl.style.setProperty("--tile-gap", `${gap}px`);
   poolEl.style.setProperty("--tile-size", `${tileSize}px`);
