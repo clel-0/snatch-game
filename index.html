@@ -156,21 +156,27 @@
     .pool-header span { color: #9ca3af; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
     #turn-indicator { color: #fbbf24; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
     .tiles {
+      --tile-size: 28px;
+      --tile-gap: 5px;
+      --tile-font-size: 1.35rem;
       display: grid;
-      grid-template-columns: repeat(16, minmax(0, 1fr));
-      grid-template-rows: repeat(9, minmax(0, 1fr));
-      gap: 5px;
+      grid-template-columns: repeat(16, var(--tile-size));
+      grid-template-rows: repeat(9, var(--tile-size));
+      gap: var(--tile-gap);
+      align-content: center;
+      justify-content: center;
       flex: 1;
       min-height: 0;
+      overflow: hidden;
     }
     .tile {
-      width: 100%;
-      height: 100%;
+      width: var(--tile-size);
+      height: var(--tile-size);
       border-radius: 5px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.35rem;
+      font-size: var(--tile-font-size);
       font-weight: bold;
       transition: transform 0.15s;
     }
@@ -365,7 +371,7 @@
 <body>
 
 <h1>SNATCH</h1>
-<p class="tagline">Time to get snatching 😎</p>
+<p class="tagline">Time to get snatching</p>
 
 <!-- ── LOBBY ──────────────────────────────────────────────── -->
 <div id="lobby-screen" class="screen active">
@@ -392,8 +398,7 @@
     <p style="text-align:center;font-size:0.78rem;color:#6b7280;margin-top:4px">
       Allowed words:
       <a href="https://github.com/dwyl/english-words/blob/master/words_alpha.txt"
-         target="_blank" rel="noopener noreferrer" style="color:#fbbf24">words_alpha.txt</a>,<br>
-      (Note: After clicking the above hyperlink, click 'view raw' to see the full list of words)
+         target="_blank" rel="noopener noreferrer" style="color:#fbbf24">words_alpha.txt</a>
     </p>
   </div>
 </div>
@@ -490,7 +495,7 @@
       </div>
     </div>
     <div class="vote-row" style="margin-top:12px;padding:4px 0">
-      <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">Just end the game vro, there's probably no more words left 🥀</button>
+      <button class="btn btn-ghost" id="btn-end-vote" style="width:auto">Just end the game vro, there's prob no more words left</button>
       <span class="vote-note" id="vote-note"></span>
     </div>
   </div>
@@ -646,6 +651,12 @@ function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
+function getCurrentTurnId(room) {
+  const turnOrder = toArr(room?.turnOrder).filter(pid => room?.players?.[pid]);
+  const turnIndex = typeof room?.turnIndex === "number" ? room.turnIndex : 0;
+  return turnOrder.length ? turnOrder[turnIndex % turnOrder.length] : null;
+}
+
 function scoreOfPlayer(p) {
   const words = toArr(p.words);
   const base = words.reduce((s, w) => s + w.length, 0);
@@ -655,6 +666,10 @@ function scoreOfPlayer(p) {
 
 function formatScore(n) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function leaderboardKeyForName(name) {
+  return (name || "").replace(/[.#$[\]/\s]/g, "_") || "unknown";
 }
 
 function renderLeaderboard(data) {
@@ -667,18 +682,22 @@ function renderLeaderboard(data) {
     .slice(0, 10);
   if (!entries.length) { el.innerHTML = empty; return; }
   el.innerHTML =
-    '<div style="display:grid;grid-template-columns:auto 1fr auto auto;gap:0 12px;align-items:center">'
+    '<div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:0 12px;align-items:center">'
     + '<span style="color:#6b7280;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px">#</span>'
     + '<span style="color:#6b7280;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px">Name</span>'
     + '<span style="color:#6b7280;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px;text-align:right">Score</span>'
     + '<span style="color:#6b7280;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px;text-align:right">Games</span>'
+    + '<span style="color:#6b7280;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px;text-align:right">Best Steal</span>'
     + entries.map((e, i) => {
         const gold = i === 0;
         const col = gold ? '#fbbf24' : '#f3f4f6';
+        const longest = typeof e.longestStolenWord === "string" ? e.longestStolenWord.toUpperCase() : "";
+        const bestSteal = longest ? `${longest} (${longest.length})` : "-";
         return `<span style="color:#6b7280">${i + 1}</span>`
           + `<span style="color:${col};font-weight:${gold ? '700' : '400'}">${e.displayName || '?'}</span>`
           + `<span style="color:${col};font-weight:700;text-align:right">${formatScore(e.score || 0)}</span>`
-          + `<span style="color:#9ca3af;text-align:right">${e.games || 0}</span>`;
+          + `<span style="color:#9ca3af;text-align:right">${e.games || 0}</span>`
+          + `<span style="color:#9ca3af;text-align:right;font-size:0.8rem">${bestSteal}</span>`;
       }).join("")
     + '</div>';
 }
@@ -701,16 +720,138 @@ async function writeMyScore(room) {
   if (!me) return;
   const score = scoreOfPlayer(me);
   const words = toArr(me.words).length;
-  const nameKey = myName.replace(/[.#$[\]/\s]/g, "_") || "unknown";
+  const nameKey = leaderboardKeyForName(myName);
   await runTransaction(ref(db, `leaderboard/${nameKey}`), entry => {
-    if (!entry) return { displayName: myName, score, games: 1, words };
+    if (!entry) return {
+      displayName: myName,
+      score,
+      games: 1,
+      words,
+      longestStolenWord: "",
+      longestStolenLength: 0
+    };
     return {
+      ...entry,
       displayName: myName,
       score:  (entry.score  || 0) + score,
       games:  (entry.games  || 0) + 1,
       words:  (entry.words  || 0) + words,
     };
   });
+}
+
+async function recordStolenWord(word) {
+  const stolen = (word || "").trim().toUpperCase();
+  if (!stolen) return;
+
+  const nameKey = leaderboardKeyForName(myName);
+  await runTransaction(ref(db, `leaderboard/${nameKey}`), entry => {
+    const next = entry
+      ? { ...entry }
+      : {
+          displayName: myName,
+          score: 0,
+          games: 0,
+          words: 0,
+          longestStolenWord: "",
+          longestStolenLength: 0
+        };
+
+    next.displayName = myName;
+    const currentLen = typeof next.longestStolenLength === "number"
+      ? next.longestStolenLength
+      : String(next.longestStolenWord || "").length;
+    if (stolen.length > currentLen) {
+      next.longestStolenWord = stolen;
+      next.longestStolenLength = stolen.length;
+    }
+    return next;
+  });
+}
+
+let audioCtx = null;
+let gameRenderedOnce = false;
+let lastTurnId = null;
+let lastRevealedCount = 0;
+
+function ensureAudioContext() {
+  if (!audioCtx) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    audioCtx = new AudioCtx();
+  }
+  return audioCtx;
+}
+
+function unlockAudio() {
+  const ctx = ensureAudioContext();
+  if (!ctx) return;
+  if (ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
+}
+
+function playToneSequence(tones, gainLevel = 0.05) {
+  const ctx = ensureAudioContext();
+  if (!ctx || ctx.state !== "running") return;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.connect(ctx.destination);
+
+  let start = ctx.currentTime;
+  for (const tone of tones) {
+    const osc = ctx.createOscillator();
+    osc.type = tone.type || "sine";
+    osc.frequency.setValueAtTime(tone.freq, start);
+    osc.connect(gain);
+
+    const end = start + tone.duration;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(gainLevel, start + Math.min(0.02, tone.duration / 2));
+    gain.gain.linearRampToValueAtTime(0, end);
+
+    osc.start(start);
+    osc.stop(end);
+    start = end + 0.01;
+  }
+}
+
+function playFlipSound() {
+  playToneSequence([
+    { freq: 780, duration: 0.04, type: "triangle" },
+    { freq: 560, duration: 0.06, type: "sine" }
+  ], 0.035);
+}
+
+function playMyTurnSound() {
+  playToneSequence([
+    { freq: 420, duration: 0.07, type: "sine" },
+    { freq: 560, duration: 0.07, type: "sine" },
+    { freq: 700, duration: 0.09, type: "triangle" }
+  ], 0.05);
+}
+
+function countRevealedBoardLetters(board) {
+  return Object.values(board).filter(Boolean).length;
+}
+
+function resizePoolTiles() {
+  const poolEl = document.getElementById("pool-tiles");
+  if (!poolEl) return;
+
+  const rect = poolEl.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const gap = rect.width < 740 ? 3 : 5;
+  const maxByWidth = (rect.width - gap * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+  const maxByHeight = (rect.height - gap * (GRID_ROWS - 1)) / GRID_ROWS;
+  const tileSize = Math.max(13, Math.floor(Math.min(maxByWidth, maxByHeight)));
+  const tileFontSize = Math.max(10, Math.floor(tileSize * 0.48));
+
+  poolEl.style.setProperty("--tile-gap", `${gap}px`);
+  poolEl.style.setProperty("--tile-size", `${tileSize}px`);
+  poolEl.style.setProperty("--tile-font-size", `${tileFontSize}px`);
 }
 
 function consumeFromPoolAndBoard(room, letters) {
@@ -913,6 +1054,9 @@ document.getElementById("btn-start").onclick = () =>
 function openGame() {
   show("game-screen");
   document.getElementById("game-code").textContent = roomId;
+  gameRenderedOnce = false;
+  lastTurnId = null;
+  lastRevealedCount = 0;
 
   if (unsubscribe) unsubscribe();
   unsubscribe = onValue(ref(db, `rooms/${roomId}`), snap => {
@@ -930,7 +1074,7 @@ function renderGame(room) {
   const board   = toBoardMap(room.board);
   const turnOrder = toArr(room.turnOrder).filter(pid => room.players?.[pid]);
   const turnIndex = typeof room.turnIndex === "number" ? room.turnIndex : 0;
-  const currentTurnId = turnOrder.length ? turnOrder[turnIndex % turnOrder.length] : null;
+  const currentTurnId = getCurrentTurnId(room);
   const currentTurnName = currentTurnId && room.players[currentTurnId]
     ? room.players[currentTurnId].name
     : "-";
@@ -945,6 +1089,15 @@ function renderGame(room) {
   const voteBtn = document.getElementById("btn-end-vote");
   const chkAutoFlip = document.getElementById("chk-autoflip");
   const inpAutoFlipSecs = document.getElementById("inp-autoflip-secs");
+  const revealedCount = countRevealedBoardLetters(board);
+
+  if (gameRenderedOnce) {
+    if (revealedCount > lastRevealedCount) playFlipSound();
+    if (!ended && currentTurnId === myId && lastTurnId !== myId) playMyTurnSound();
+  }
+  lastTurnId = currentTurnId;
+  lastRevealedCount = revealedCount;
+  gameRenderedOnce = true;
 
   syncingAutoFlipControls = true;
   chkAutoFlip.checked = autoFlipEnabled;
@@ -968,7 +1121,7 @@ function renderGame(room) {
     voteNoteEl.textContent = `${proposerName} suggested ending the game (${approvalCount}/${turnOrder.length} agreed).`;
   } else {
     voteBtn.disabled = false;
-    voteBtn.textContent = "Just end the game vro, there's probably no more words left 🥀";
+    voteBtn.textContent = "Just end the game vro, there's prob no more words left";
     voteNoteEl.textContent = "";
   }
 
@@ -997,6 +1150,7 @@ function renderGame(room) {
     }
     poolEl.appendChild(d);
   }
+  resizePoolTiles();
 
   document.getElementById("bag-count").textContent = bag.length;
 
@@ -1068,6 +1222,64 @@ function renderGame(room) {
 // ─── Auto-flip ────────────────────────────────────────────────────────────────
 let autoFlipTimer   = null;
 let autoFlipForTurn = null;
+
+window.addEventListener("pointerdown", unlockAudio, { once: true });
+window.addEventListener("keydown", unlockAudio, { once: true });
+window.addEventListener("resize", resizePoolTiles);
+
+document.addEventListener("keydown", async e => {
+  if (e.code !== "Space" || e.repeat) return;
+
+  const active = document.activeElement;
+  const isTyping = active && (
+    active.tagName === "INPUT" ||
+    active.tagName === "TEXTAREA" ||
+    active.isContentEditable
+  );
+  if (isTyping) return;
+
+  const gameScreen = document.getElementById("game-screen");
+  if (!gameScreen.classList.contains("active")) return;
+
+  e.preventDefault();
+  unlockAudio();
+  await flipRandomTileFromKeyboard();
+});
+
+async function flipRandomTileFromKeyboard() {
+  const flipErr = document.getElementById("flip-error");
+  const room = latestRoom;
+  if (!room) return;
+
+  const currentTurnId = getCurrentTurnId(room);
+  if (room.status === "ended") {
+    flipErr.textContent = "The game has ended.";
+    return;
+  }
+  if (currentTurnId !== myId) {
+    flipErr.textContent = "Not your turn to flip.";
+    return;
+  }
+
+  const board = toBoardMap(room.board);
+  const flippable = [];
+  for (let i = 0; i < TOTAL_TILES; i++) {
+    if (!hasOwn(board, i)) flippable.push(i);
+  }
+  if (!flippable.length) {
+    flipErr.textContent = "No hidden tiles left.";
+    return;
+  }
+  if (!toArr(room.bag).length) {
+    flipErr.textContent = "No letters left to flip.";
+    return;
+  }
+
+  flipErr.textContent = "";
+  clearAutoFlip();
+  const idx = flippable[Math.floor(Math.random() * flippable.length)];
+  await doFlip(idx);
+}
 
 document.getElementById("chk-autoflip").onchange = async e => {
   if (!roomId || syncingAutoFlipControls) return;
@@ -1270,6 +1482,7 @@ async function handleClaim() {
       if (!extraFreq)           continue; // new word is missing some existing letters
       if (isEmpty(extraFreq))   continue; // no new letters added — not a valid steal
       if (word.startsWith(existing)) continue; // pure suffix addition — no rearrangement
+      if (word === `RE${existing}` || word === `UN${existing}`) continue; // disallow direct re-/un- prefix steals
       if (!freqSub(poolFreq, extraFreq)) continue; // extra letters not all in pool
 
       const ok = await atomicSteal(word, pid, wi, existing, extraFreq);
@@ -1279,6 +1492,7 @@ async function handleClaim() {
         await push(ref(db, `rooms/${roomId}/log`), {
           msg: `<span class="hi">${myName}</span> stole <strong>${existing}</strong> from ${targetName} → <strong>${word}</strong>`
         });
+        recordStolenWord(word).catch(() => {});
         return;
       }
     }
