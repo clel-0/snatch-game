@@ -385,6 +385,10 @@
       <button class="btn btn-blue" id="btn-join">Join Room</button>
       <p class="error" id="join-error"></p>
     </div>
+    <div class="card">
+      <h2>All-Time Leaderboard</h2>
+      <div id="leaderboard-list" style="color:#6b7280;font-size:0.85rem">Loading…</div>
+    </div>
     <p style="text-align:center;font-size:0.78rem;color:#6b7280;margin-top:4px">
       Allowed words:
       <a href="https://github.com/dwyl/english-words/blob/master/words_alpha.txt"
@@ -509,6 +513,9 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
+
+// ─── Live leaderboard ────────────────────────────────────────────────────────
+onValue(ref(db, "leaderboard"), snap => renderLeaderboard(snap.val()));
 
 // ─── Letter bag ───────────────────────────────────────────────────────────────
 const DIST = {
@@ -647,6 +654,62 @@ function scoreOfPlayer(p) {
 
 function formatScore(n) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function renderLeaderboard(data) {
+  const el = document.getElementById("leaderboard-list");
+  if (!el) return;
+  const empty = '<span style="color:#6b7280">No scores yet — play a game!</span>';
+  if (!data) { el.innerHTML = empty; return; }
+  const entries = Object.values(data)
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .slice(0, 10);
+  if (!entries.length) { el.innerHTML = empty; return; }
+  el.innerHTML =
+    '<div style="display:grid;grid-template-columns:auto 1fr auto auto;gap:0 12px;align-items:center">'
+    + '<span style="color:#6b7280;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px">#</span>'
+    + '<span style="color:#6b7280;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px">Name</span>'
+    + '<span style="color:#6b7280;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px;text-align:right">Score</span>'
+    + '<span style="color:#6b7280;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px;text-align:right">Games</span>'
+    + entries.map((e, i) => {
+        const gold = i === 0;
+        const col = gold ? '#fbbf24' : '#f3f4f6';
+        return `<span style="color:#6b7280">${i + 1}</span>`
+          + `<span style="color:${col};font-weight:${gold ? '700' : '400'}">${e.displayName || '?'}</span>`
+          + `<span style="color:${col};font-weight:700;text-align:right">${formatScore(e.score || 0)}</span>`
+          + `<span style="color:#9ca3af;text-align:right">${e.games || 0}</span>`;
+      }).join("")
+    + '</div>';
+}
+
+function hasAlreadyScored(rid) {
+  try {
+    return JSON.parse(sessionStorage.getItem("snatch_scored") || "[]").includes(rid);
+  } catch { return false; }
+}
+
+function markAsScored(rid) {
+  try {
+    const arr = JSON.parse(sessionStorage.getItem("snatch_scored") || "[]");
+    if (!arr.includes(rid)) { arr.push(rid); sessionStorage.setItem("snatch_scored", JSON.stringify(arr)); }
+  } catch {}
+}
+
+async function writeMyScore(room) {
+  const me = room.players?.[myId];
+  if (!me) return;
+  const score = scoreOfPlayer(me);
+  const words = toArr(me.words).length;
+  const nameKey = myName.replace(/[.#$[\]/\s]/g, "_") || "unknown";
+  await runTransaction(ref(db, `leaderboard/${nameKey}`), entry => {
+    if (!entry) return { displayName: myName, score, games: 1, words };
+    return {
+      displayName: myName,
+      score:  (entry.score  || 0) + score,
+      games:  (entry.games  || 0) + 1,
+      words:  (entry.words  || 0) + words,
+    };
+  });
 }
 
 function consumeFromPoolAndBoard(room, letters) {
@@ -958,6 +1021,10 @@ function renderGame(room) {
       </tr>`).join("");
 
     banner.classList.add("visible");
+    if (!hasAlreadyScored(roomId)) {
+      markAsScored(roomId);
+      writeMyScore(room).catch(() => {});
+    }
   } else {
     banner.classList.remove("visible");
   }
